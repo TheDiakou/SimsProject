@@ -13,16 +13,18 @@ const chatModels = [
 ];
 
 const imageModels = [
-  { value: "black-forest-labs/flux.1-dev", label: "FLUX.1 Dev" },
-  { value: "black-forest-labs/flux.1-schnell", label: "FLUX.1 Schnell" },
-  { value: "stabilityai/stable-diffusion-3-medium", label: "Stable Diffusion 3 Medium" },
-  { value: "stabilityai/stable-diffusion-xl", label: "Stable Diffusion XL" },
+  { value: "black-forest-labs/flux.1-dev", label: "FLUX.1 Dev", endpoint: "https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.1-dev", body: "flux" },
+  { value: "black-forest-labs/flux.1-schnell", label: "FLUX.1 Schnell", endpoint: "https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.1-schnell", body: "flux" },
+  { value: "black-forest-labs/flux.2-klein-4b", label: "FLUX.2 Klein 4B", endpoint: "https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.2-klein-4b", body: "flux" },
+  { value: "stabilityai/stable-diffusion-3-medium", label: "Stable Diffusion 3 Medium", endpoint: "https://ai.api.nvidia.com/v1/genai/stabilityai/stable-diffusion-3-medium", body: "sd" },
+  { value: "stabilityai/stable-diffusion-xl", label: "Stable Diffusion XL", endpoint: "https://ai.api.nvidia.com/v1/genai/stabilityai/stable-diffusion-xl", body: "sd" },
 ];
 
 const els = {
   prompt: $("prompt"),
   generate: $("generate"),
   generateImage: $("generateImage"),
+  testKey: $("testKey"),
   reroll: $("reroll"),
   randomIdea: $("randomIdea"),
   status: $("status"),
@@ -90,6 +92,7 @@ generateRoom(false);
 
 els.generate.addEventListener("click", () => generateRoom(true));
 els.generateImage.addEventListener("click", () => generateConceptImage());
+els.testKey.addEventListener("click", () => testNvidiaKey());
 els.reroll.addEventListener("click", () => {
   seedOffset += 157;
   renderRoom(currentRoom || localRoom(els.prompt.value));
@@ -119,6 +122,7 @@ function initControls() {
 async function generateRoom(allowAi = false) {
   setStatus("Composing the room world...", "work");
   const prompt = els.prompt.value.trim() || ideas[0];
+  let aiError = null;
 
   if (allowAi && els.apiKey.value.trim()) {
     try {
@@ -130,42 +134,89 @@ async function generateRoom(allowAi = false) {
       return;
     } catch (error) {
       console.warn(error);
-      setStatus(`NVIDIA text generation failed, local engine used instead. ${friendlyError(error)}`, "warn");
+      aiError = friendlyError(error);
     }
   }
 
   currentRoom = localRoom(prompt);
   renderRoom(currentRoom);
   els.generationMode.textContent = "Local engine";
-  setStatus(allowAi ? "Generated locally. Add a valid NVIDIA key for live model output." : "Local generator loaded. Add a key only if you want live NVIDIA calls.", "ok");
+  if (aiError) {
+    setStatus(`NVIDIA failed, so the local room engine rendered this instead. ${aiError}`, "warn");
+  } else {
+    setStatus(allowAi ? "Generated locally because no NVIDIA key is currently entered." : "Local generator loaded. Add a key only if you want live NVIDIA calls.", "ok");
+  }
+}
+
+async function testNvidiaKey() {
+  if (!els.apiKey.value.trim()) {
+    setStatus("Paste a NVIDIA API key first, then run the test.", "warn");
+    return;
+  }
+  setStatus(`Testing ${selectedLabel(els.chatModel)}...`, "work");
+  try {
+    const response = await nvidiaChatRequest([
+      { role: "user", content: "Reply with exactly this JSON and nothing else: {\"ok\":true,\"provider\":\"nvidia\"}" }
+    ], 96);
+    const content = response.choices?.[0]?.message?.content || "";
+    if (!content) throw new Error("The request succeeded but returned no message content.");
+    setStatus(`NVIDIA key works for ${selectedLabel(els.chatModel)}.`, "ok");
+  } catch (error) {
+    console.warn(error);
+    setStatus(`NVIDIA key test failed. ${friendlyError(error)}`, "warn");
+  }
 }
 
 async function generateWithNvidia(prompt) {
+  const data = await nvidiaChatRequest([
+    {
+      role: "system",
+      content: "You are a high-end interactive 3D room director for Sims players. Return only valid JSON. No markdown. Schema: {title:string, roomType:string, dimensions:{width:number,depth:number,height:number}, story:string, palette:{wall:string,floor:string,accent:string,light:string,trim:string}, zones:[{name:string,description:string}], objects:[{type:string,label:string,x:number,z:number,rotation:number,color:string,note:string}], buildList:string[]}. Types: bed,desk,sofa,plant,rug,lamp,shelf,painting,clutter,mirror,books,catbed,telescope,window,curtain,wardrobe,chair,table,divider,poster,candle,console,crystal. Coordinates x and z from -3.2 to 3.2. Include 16 to 26 objects, with at least 4 wall/decor objects. Make it feel like a Rooms.xyz-style miniature world and a Sims build guide. Hex colors only."
+    },
+    { role: "user", content: prompt }
+  ], 2200);
+  const content = data.choices?.[0]?.message?.content || "";
+  return JSON.parse(extractJson(content));
+}
+
+async function nvidiaChatRequest(messages, maxTokens) {
+  const body = {
+    model: els.chatModel.value,
+    temperature: 0.82,
+    top_p: 0.92,
+    max_tokens: maxTokens,
+    messages,
+  };
+  if (els.chatModel.value === "deepseek-ai/deepseek-v4-pro") {
+    body.reasoning_effort = "max";
+  }
+
+  if (hasSameOriginProxy()) {
+    const proxied = await fetch("/api/nvidia-chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ apiKey: els.apiKey.value.trim(), body }),
+    });
+    if (!proxied.ok) throw new Error(`${proxied.status} ${(await proxied.text()).slice(0, 260)}`);
+    return proxied.json();
+  }
+
+  if (isStaticGithubPages()) {
+    throw new Error("This GitHub Pages deployment is static, and NVIDIA blocks direct browser calls with CORS. Deploy this repo to Vercel or Netlify so the included /api proxy can call NVIDIA.");
+  }
+
   const response = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
     method: "POST",
     headers: {
+      Accept: "application/json",
       "Content-Type": "application/json",
       Authorization: `Bearer ${els.apiKey.value.trim()}`,
     },
-    body: JSON.stringify({
-      model: els.chatModel.value,
-      temperature: 0.82,
-      top_p: 0.92,
-      max_tokens: 2200,
-      messages: [
-        {
-          role: "system",
-          content: "You are a high-end interactive 3D room director for Sims players. Return only valid JSON. No markdown. Schema: {title:string, roomType:string, dimensions:{width:number,depth:number,height:number}, story:string, palette:{wall:string,floor:string,accent:string,light:string,trim:string}, zones:[{name:string,description:string}], objects:[{type:string,label:string,x:number,z:number,rotation:number,color:string,note:string}], buildList:string[]}. Types: bed,desk,sofa,plant,rug,lamp,shelf,painting,clutter,mirror,books,catbed,telescope,window,curtain,wardrobe,chair,table,divider,poster,candle,console,crystal. Coordinates x and z from -3.2 to 3.2. Include 16 to 26 objects, with at least 4 wall/decor objects. Make it feel like a Rooms.xyz-style miniature world and a Sims build guide. Hex colors only."
-        },
-        { role: "user", content: prompt }
-      ]
-    })
+    body: JSON.stringify(body)
   });
 
-  if (!response.ok) throw new Error(`${response.status} ${(await response.text()).slice(0, 180)}`);
-  const data = await response.json();
-  const content = data.choices?.[0]?.message?.content || "";
-  return JSON.parse(extractJson(content));
+  if (!response.ok) throw new Error(`${response.status} ${(await response.text()).slice(0, 260)}`);
+  return response.json();
 }
 
 async function generateConceptImage() {
@@ -185,24 +236,30 @@ async function generateConceptImage() {
   ].join(" ");
 
   try {
-    const response = await fetch("https://integrate.api.nvidia.com/v1/images/generations", {
+    const model = selectedImageModel();
+    const response = hasSameOriginProxy()
+      ? await fetch("/api/nvidia-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey: els.apiKey.value.trim(), model: model.value, body: imageRequestBody(model, imagePrompt) }),
+      })
+      : isStaticGithubPages()
+        ? null
+        : await fetch(model.endpoint, {
       method: "POST",
       headers: {
+        Accept: "application/json",
         "Content-Type": "application/json",
         Authorization: `Bearer ${els.apiKey.value.trim()}`,
       },
-      body: JSON.stringify({
-        model: els.imageModel.value,
-        prompt: imagePrompt,
-        size: "1024x1024",
-        n: 1,
-      })
+      body: JSON.stringify(imageRequestBody(model, imagePrompt))
     });
 
-    if (!response.ok) throw new Error(`${response.status} ${(await response.text()).slice(0, 180)}`);
+    if (!response) throw new Error("This GitHub Pages deployment is static, and NVIDIA image models require the included /api proxy on Vercel or Netlify.");
+
+    if (!response.ok) throw new Error(`${response.status} ${(await response.text()).slice(0, 260)}`);
     const data = await response.json();
-    const item = data.data?.[0] || data.images?.[0] || {};
-    const url = item.url || (item.b64_json ? `data:image/png;base64,${item.b64_json}` : item.image_url);
+    const url = imageUrlFromResponse(data);
     if (!url) throw new Error("No image URL returned by the selected model.");
     els.conceptImage.innerHTML = "";
     const img = document.createElement("img");
@@ -215,6 +272,40 @@ async function generateConceptImage() {
     els.conceptImage.textContent = "Image generation did not return an image. Try another image model from the dropdown.";
     setStatus(`Image generation failed. ${friendlyError(error)}`, "warn");
   }
+}
+
+function selectedImageModel() {
+  return imageModels.find((model) => model.value === els.imageModel.value) || imageModels[0];
+}
+
+function hasSameOriginProxy() {
+  return !isStaticGithubPages() && location.protocol.startsWith("http");
+}
+
+function isStaticGithubPages() {
+  return location.hostname.endsWith("github.io");
+}
+
+function imageRequestBody(model, prompt) {
+  if (model.body === "flux") {
+    return { prompt, width: 1024, height: 1024, cfg_scale: 5, mode: "base", samples: 1, seed: 0, steps: 36 };
+  }
+  return { prompt, width: 1024, height: 1024, cfg_scale: 7, samples: 1, seed: 0, steps: 35 };
+}
+
+function imageUrlFromResponse(data) {
+  const candidates = [
+    data?.url,
+    data?.image_url,
+    data?.data?.[0]?.url,
+    data?.data?.[0]?.image_url,
+    data?.data?.[0]?.b64_json && `data:image/png;base64,${data.data[0].b64_json}`,
+    data?.artifacts?.[0]?.base64 && `data:image/png;base64,${data.artifacts[0].base64}`,
+    data?.artifacts?.[0]?.image && `data:image/png;base64,${data.artifacts[0].image}`,
+    data?.images?.[0]?.url,
+    data?.images?.[0]?.b64_json && `data:image/png;base64,${data.images[0].b64_json}`,
+  ];
+  return candidates.find(Boolean) || "";
 }
 
 function localRoom(prompt) {
@@ -764,7 +855,11 @@ function setStatus(message, type) {
 }
 
 function friendlyError(error) {
-  return String(error.message || error).replace(/Bearer\s+[A-Za-z0-9_.-]+/g, "Bearer [hidden]");
+  const message = String(error.message || error).replace(/Bearer\s+[A-Za-z0-9_.-]+/g, "Bearer [hidden]");
+  if (/failed to fetch|load failed|networkerror/i.test(message)) {
+    return `${message}. This usually means the browser blocked the NVIDIA request with CORS, or the network could not reach NVIDIA from this page.`;
+  }
+  return message;
 }
 
 async function copyText(text, message) {
