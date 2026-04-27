@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SimSpark Room Oracle</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,700;9..144,900&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero panel">
+        <div>
+          <p class="eyebrow">AI-style build mode for Sims players</p>
+          <h1>SimSpark Room Oracle</h1>
+          <p class="lede">Describe a Sim, household drama, or build vibe. Get an orbitable 3D room, object lore, and a practical build list you can recreate in The Sims.</p>
+        </div>
+        <button id="randomIdea" class="ghost">Surprise me</button>
+      </section>
+
+      <section class="workspace">
+        <aside class="panel controls">
+          <label for="prompt">Describe your Sim and room</label>
+          <textarea id="prompt" rows="7" spellcheck="true">A broke college spellcaster who loves plants, cats, astronomy, and cozy witchy clutter needs a tiny greenhouse bedroom.</textarea>
+          <div class="button-row">
+            <button id="generate" class="primary">Generate Room</button>
+            <button id="reroll" class="secondary">Reroll Layout</button>
+          </div>
+
+          <div class="chips" aria-label="Prompt presets">
+            <button data-preset="Make it a cursed vampire apartment with fake plants, blackout curtains, antique mirrors, and suspiciously dramatic lighting.">Cursed Vampire</button>
+            <button data-preset="Make it a rich legacy heir bedroom with luxury clutter, gold accents, family portraits, and scandalous inheritance energy.">Rich Legacy</button>
+            <button data-preset="Make it a starter home room for a broke Sim with thrifted furniture, practical storage, and big dreams.">Starter Home</button>
+            <button data-preset="Make it an alien scientist lab-bedroom with neon lighting, specimens, star charts, and awkward human disguise notes.">Alien Scientist</button>
+            <button data-preset="Make it a plant mom greenhouse studio with terracotta, hanging vines, cat beds, and sunlit chaos.">Plant Mom</button>
+          </div>
+
+          <details class="key-box">
+            <summary>NVIDIA AI key optional</summary>
+            <p>Paste your own NVIDIA API key to use DeepSeek through NVIDIA. Keys are never committed. Remembering stores it only in this browser.</p>
+            <input id="apiKey" type="password" placeholder="nvapi-..." autocomplete="off" />
+            <label class="check"><input id="rememberKey" type="checkbox" /> Remember locally</label>
+            <label for="model">Model</label>
+            <input id="model" type="text" value="deepseek-ai/deepseek-v3.1" />
+          </details>
+
+          <div id="status" class="status">Ready. No key needed for the local generator.</div>
+        </aside>
+
+        <section class="stage panel">
+          <div id="scene" aria-label="Interactive 3D room"></div>
+          <div class="scene-hint">Drag to orbit. Scroll to zoom. Click objects for lore.</div>
+        </section>
+
+        <aside class="panel output">
+          <p class="eyebrow">Generated room</p>
+          <h2 id="roomTitle">Cozy Witchy Greenhouse Bedroom</h2>
+          <p id="roomStory" class="story">Generate a room to reveal a personalized build story.</p>
+          <div class="selected-card">
+            <span>Selected object</span>
+            <strong id="selectedName">Nothing selected</strong>
+            <p id="selectedNote">Click furniture or decor in the room.</p>
+          </div>
+          <h3>Build List</h3>
+          <ul id="buildList"></ul>
+          <div class="button-row">
+            <button id="copyJson" class="secondary">Copy JSON</button>
+            <button id="copyList" class="secondary">Copy Build List</button>
+          </div>
+        </aside>
+      </section>
+    </main>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.165.0/build/three.module.js",
+          "three/addons/": "https://unpkg.com/three@0.165.0/examples/jsm/"
+        }
+      }
+    </script>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
