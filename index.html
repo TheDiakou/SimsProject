@@ -3,71 +3,112 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>SimSpark Room Oracle</title>
+    <title>SimRooms Studio</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,700;9..144,900&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <main class="shell">
-      <section class="hero panel">
-        <div>
-          <p class="eyebrow">AI-style build mode for Sims players</p>
-          <h1>SimSpark Room Oracle</h1>
-          <p class="lede">Describe a Sim, household drama, or build vibe. Get an orbitable 3D room, object lore, and a practical build list you can recreate in The Sims.</p>
+    <div class="grain"></div>
+    <main class="app-shell">
+      <nav class="topbar">
+        <a class="brand" href="#">
+          <span class="brand-mark"></span>
+          <span>SimRooms</span>
+        </a>
+        <div class="nav-actions">
+          <button id="randomIdea" class="text-button">Shuffle brief</button>
+          <a class="text-button" href="https://github.com/TheDiakou/SimsProject" target="_blank" rel="noreferrer">GitHub</a>
         </div>
-        <button id="randomIdea" class="ghost">Surprise me</button>
-      </section>
+      </nav>
 
-      <section class="workspace">
-        <aside class="panel controls">
-          <label for="prompt">Describe your Sim and room</label>
-          <textarea id="prompt" rows="7" spellcheck="true">A broke college spellcaster who loves plants, cats, astronomy, and cozy witchy clutter needs a tiny greenhouse bedroom.</textarea>
-          <div class="button-row">
-            <button id="generate" class="primary">Generate Room</button>
-            <button id="reroll" class="secondary">Reroll Layout</button>
+      <header class="hero-grid">
+        <section class="hero-copy">
+          <p class="kicker">AI room worlds for Sims storytellers</p>
+          <h1>Generate a playable-feeling room from one messy Sim idea.</h1>
+          <p class="lede">A rooms.xyz-inspired 3D room board: describe the Sim, pick the model, generate the diorama, then inspect every object for household lore and Sims build cues.</p>
+        </section>
+        <section class="brief-card glass-card">
+          <div class="brief-head">
+            <span>Build Brief</span>
+            <strong id="generationMode">Local engine ready</strong>
           </div>
-
-          <div class="chips" aria-label="Prompt presets">
-            <button data-preset="Make it a cursed vampire apartment with fake plants, blackout curtains, antique mirrors, and suspiciously dramatic lighting.">Cursed Vampire</button>
-            <button data-preset="Make it a rich legacy heir bedroom with luxury clutter, gold accents, family portraits, and scandalous inheritance energy.">Rich Legacy</button>
-            <button data-preset="Make it a starter home room for a broke Sim with thrifted furniture, practical storage, and big dreams.">Starter Home</button>
-            <button data-preset="Make it an alien scientist lab-bedroom with neon lighting, specimens, star charts, and awkward human disguise notes.">Alien Scientist</button>
-            <button data-preset="Make it a plant mom greenhouse studio with terracotta, hanging vines, cat beds, and sunlit chaos.">Plant Mom</button>
+          <textarea id="prompt" rows="6" spellcheck="true">A broke college spellcaster who loves plants, cats, astronomy, and cozy witchy clutter needs a tiny greenhouse bedroom.</textarea>
+          <div class="control-grid">
+            <label>
+              Text model
+              <select id="chatModel"></select>
+            </label>
+            <label>
+              Image model
+              <select id="imageModel"></select>
+            </label>
           </div>
-
-          <details class="key-box">
-            <summary>NVIDIA AI key optional</summary>
-            <p>Paste your own NVIDIA API key to use DeepSeek through NVIDIA. Keys are never committed. Remembering stores it only in this browser.</p>
+          <details class="key-drawer">
+            <summary>Use NVIDIA API key</summary>
+            <p>Paste your own key for live model calls. It is only stored if you choose to remember it in this browser.</p>
             <input id="apiKey" type="password" placeholder="nvapi-..." autocomplete="off" />
             <label class="check"><input id="rememberKey" type="checkbox" /> Remember locally</label>
-            <label for="model">Model</label>
-            <input id="model" type="text" value="deepseek-ai/deepseek-v3.1" />
           </details>
+          <div class="cta-row">
+            <button id="generate" class="primary">Generate Room</button>
+            <button id="generateImage" class="secondary">Generate Concept Art</button>
+            <button id="reroll" class="secondary">Reroll Layout</button>
+          </div>
+          <div id="status" class="status">No API key required. Local generation is instant.</div>
+        </section>
+      </header>
 
-          <div id="status" class="status">Ready. No key needed for the local generator.</div>
+      <section class="preset-strip" aria-label="Room prompt presets">
+        <button data-preset="Make it a cursed vampire apartment with fake plants, blackout curtains, antique mirrors, secret romance letters, and suspiciously dramatic lighting.">Cursed Vampire Loft</button>
+        <button data-preset="Make it a rich legacy heir suite with luxury clutter, gold accents, family portraits, expensive loneliness, and scandalous inheritance energy.">Legacy Heir Suite</button>
+        <button data-preset="Make it a starter home bedroom for a broke Sim with thrifted furniture, practical storage, mismatched decor, and big dreams.">Starter Glow-Up</button>
+        <button data-preset="Make it an alien scientist lab-bedroom with neon lighting, specimens, star charts, hidden tech, and awkward human disguise notes.">Alien Lab Bedroom</button>
+        <button data-preset="Make it a plant mom greenhouse studio with terracotta, hanging vines, cat beds, laundry chaos, and soft morning sunlight.">Plant Mom Studio</button>
+      </section>
+
+      <section class="studio-grid">
+        <aside class="room-index glass-card">
+          <p class="section-label">Rooms</p>
+          <div id="roomCards" class="room-cards"></div>
         </aside>
 
-        <section class="stage panel">
+        <section class="viewport-card glass-card">
+          <div class="viewport-meta">
+            <div>
+              <p class="section-label">Interactive Diorama</p>
+              <h2 id="roomTitle">Cozy Witchy Greenhouse Bedroom</h2>
+            </div>
+            <div class="stat-stack">
+              <span id="roomSize">7 x 7</span>
+              <span id="objectCount">0 objects</span>
+            </div>
+          </div>
           <div id="scene" aria-label="Interactive 3D room"></div>
           <div class="scene-hint">Drag to orbit. Scroll to zoom. Click objects for lore.</div>
         </section>
 
-        <aside class="panel output">
-          <p class="eyebrow">Generated room</p>
-          <h2 id="roomTitle">Cozy Witchy Greenhouse Bedroom</h2>
+        <aside class="details glass-card">
+          <p class="section-label">Story System</p>
           <p id="roomStory" class="story">Generate a room to reveal a personalized build story.</p>
           <div class="selected-card">
-            <span>Selected object</span>
+            <span>Selected Object</span>
             <strong id="selectedName">Nothing selected</strong>
-            <p id="selectedNote">Click furniture or decor in the room.</p>
+            <p id="selectedNote">Click furniture, wall decor, or clutter in the room.</p>
+          </div>
+          <div class="concept-card">
+            <div class="concept-head">
+              <span>AI Concept Art</span>
+              <button id="clearImage" class="mini-button">Clear</button>
+            </div>
+            <div id="conceptImage" class="concept-empty">Use an NVIDIA image model to generate a moodboard image for the room.</div>
           </div>
           <h3>Build List</h3>
           <ul id="buildList"></ul>
-          <div class="button-row">
+          <div class="cta-row tight">
             <button id="copyJson" class="secondary">Copy JSON</button>
-            <button id="copyList" class="secondary">Copy Build List</button>
+            <button id="copyList" class="secondary">Copy List</button>
           </div>
         </aside>
       </section>

@@ -3,15 +3,35 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 
 const $ = (id) => document.getElementById(id);
 
+const chatModels = [
+  { value: "deepseek-ai/deepseek-v4-pro", label: "DeepSeek V4 Pro" },
+  { value: "deepseek-ai/deepseek-r1", label: "DeepSeek R1 Reasoning" },
+  { value: "nvidia/llama-3.1-nemotron-ultra-253b-v1", label: "Nemotron Ultra 253B" },
+  { value: "nvidia/llama-3.1-nemotron-70b-instruct", label: "Nemotron 70B" },
+  { value: "meta/llama-3.3-70b-instruct", label: "Llama 3.3 70B" },
+  { value: "mistralai/mixtral-8x22b-instruct-v0.1", label: "Mixtral 8x22B" },
+];
+
+const imageModels = [
+  { value: "black-forest-labs/flux.1-dev", label: "FLUX.1 Dev" },
+  { value: "black-forest-labs/flux.1-schnell", label: "FLUX.1 Schnell" },
+  { value: "stabilityai/stable-diffusion-3-medium", label: "Stable Diffusion 3 Medium" },
+  { value: "stabilityai/stable-diffusion-xl", label: "Stable Diffusion XL" },
+];
+
 const els = {
   prompt: $("prompt"),
   generate: $("generate"),
+  generateImage: $("generateImage"),
   reroll: $("reroll"),
   randomIdea: $("randomIdea"),
   status: $("status"),
+  generationMode: $("generationMode"),
   scene: $("scene"),
   roomTitle: $("roomTitle"),
   roomStory: $("roomStory"),
+  roomSize: $("roomSize"),
+  objectCount: $("objectCount"),
   selectedName: $("selectedName"),
   selectedNote: $("selectedNote"),
   buildList: $("buildList"),
@@ -19,7 +39,11 @@ const els = {
   copyList: $("copyList"),
   apiKey: $("apiKey"),
   rememberKey: $("rememberKey"),
-  model: $("model"),
+  chatModel: $("chatModel"),
+  imageModel: $("imageModel"),
+  roomCards: $("roomCards"),
+  conceptImage: $("conceptImage"),
+  clearImage: $("clearImage"),
 };
 
 const ideas = [
@@ -28,18 +52,25 @@ const ideas = [
   "A broke alien scientist is pretending to be a normal roommate in a suspiciously neon studio.",
   "A rich legacy heir needs a gold bedroom that quietly reveals family scandal and expensive loneliness.",
   "A cottagecore plant mom and her three cats need a chaotic greenhouse bedroom with thrifted magic.",
-  "A teen runaway spellcaster needs a starter room that feels safe, cheap, and secretly powerful."
+  "A runaway teen spellcaster needs a starter room that feels safe, cheap, and secretly powerful."
 ];
 
 const palettes = {
-  witchy: { wall: "#353348", floor: "#5a3b2c", accent: "#8c61c8", light: "#f1b757" },
-  vampire: { wall: "#211725", floor: "#32222a", accent: "#aa1e4e", light: "#de6f58" },
-  rich: { wall: "#efe3c0", floor: "#6b4a24", accent: "#c99528", light: "#ffd27a" },
-  starter: { wall: "#d9d1bb", floor: "#8b6b4f", accent: "#4e86a6", light: "#fff1c7" },
-  alien: { wall: "#102a3a", floor: "#1d4050", accent: "#31e6c4", light: "#68f2d5" },
-  plant: { wall: "#d9e3ce", floor: "#7a4f31", accent: "#3b8b54", light: "#ffe4a1" },
-  goth: { wall: "#25202d", floor: "#37303a", accent: "#7d4fa6", light: "#c07bff" },
+  witchy: { wall: "#363047", floor: "#5b3b2b", accent: "#9d70dd", light: "#f5c96a", trim: "#ead8b8" },
+  vampire: { wall: "#20131b", floor: "#342029", accent: "#b91647", light: "#ff705f", trim: "#b69b85" },
+  rich: { wall: "#e8d7ab", floor: "#6a4824", accent: "#d4a72f", light: "#ffd67d", trim: "#fff1cc" },
+  starter: { wall: "#d6cfbd", floor: "#8b6a4e", accent: "#4f89ad", light: "#fff0bb", trim: "#f4ead8" },
+  alien: { wall: "#102936", floor: "#1c4050", accent: "#33e5c5", light: "#7af6de", trim: "#b9fff2" },
+  plant: { wall: "#dae4ce", floor: "#754b2f", accent: "#3c9058", light: "#ffe2a1", trim: "#f5ebd7" },
+  goth: { wall: "#24202d", floor: "#38303d", accent: "#8956b2", light: "#c78cff", trim: "#c9b8d8" },
 };
+
+const roomTemplates = [
+  { key: "witchy", label: "Witchy Greenhouse", text: "A cozy spellcaster greenhouse bedroom with cats, moon maps, herbs, old books, and maximal clutter." },
+  { key: "vampire", label: "Vampire Loft", text: "A dramatic vampire loft with blackout curtains, antique mirrors, velvet, and secrets." },
+  { key: "alien", label: "Alien Lab", text: "An alien scientist lab bedroom with neon specimens, telescope, and fake human decor." },
+  { key: "rich", label: "Legacy Suite", text: "A wealthy legacy heir suite with gold trim, portraits, heirlooms, and expensive drama." },
+];
 
 let renderer;
 let scene;
@@ -51,13 +82,16 @@ let clickable = [];
 let currentRoom;
 let seedOffset = 0;
 
+initControls();
 initThree();
 restoreKey();
-generateRoom();
+renderRoomCards();
+generateRoom(false);
 
 els.generate.addEventListener("click", () => generateRoom(true));
+els.generateImage.addEventListener("click", () => generateConceptImage());
 els.reroll.addEventListener("click", () => {
-  seedOffset += 101;
+  seedOffset += 157;
   renderRoom(currentRoom || localRoom(els.prompt.value));
 });
 els.randomIdea.addEventListener("click", () => {
@@ -68,6 +102,7 @@ els.copyJson.addEventListener("click", () => copyText(JSON.stringify(currentRoom
 els.copyList.addEventListener("click", () => copyText(currentRoom.buildList.map((item) => `- ${item}`).join("\n"), "Copied build list."));
 els.rememberKey.addEventListener("change", persistKeyChoice);
 els.apiKey.addEventListener("input", persistKeyChoice);
+els.clearImage.addEventListener("click", resetConceptImage);
 
 document.querySelectorAll("[data-preset]").forEach((button) => {
   button.addEventListener("click", () => {
@@ -76,8 +111,13 @@ document.querySelectorAll("[data-preset]").forEach((button) => {
   });
 });
 
+function initControls() {
+  chatModels.forEach((model, index) => els.chatModel.add(new Option(model.label, model.value, index === 0, index === 0)));
+  imageModels.forEach((model, index) => els.imageModel.add(new Option(model.label, model.value, index === 0, index === 0)));
+}
+
 async function generateRoom(allowAi = false) {
-  setStatus("Generating room...", "work");
+  setStatus("Composing the room world...", "work");
   const prompt = els.prompt.value.trim() || ideas[0];
 
   if (allowAi && els.apiKey.value.trim()) {
@@ -85,51 +125,96 @@ async function generateRoom(allowAi = false) {
       const aiRoom = await generateWithNvidia(prompt);
       currentRoom = normalizeRoom(aiRoom, prompt);
       renderRoom(currentRoom);
-      setStatus("Generated with NVIDIA. The key stayed in this browser session.", "ok");
+      els.generationMode.textContent = "NVIDIA model";
+      setStatus(`Generated with ${selectedLabel(els.chatModel)}.`, "ok");
       return;
     } catch (error) {
       console.warn(error);
-      setStatus(`NVIDIA failed, using local generator: ${error.message}`, "warn");
+      setStatus(`NVIDIA text generation failed, local engine used instead. ${friendlyError(error)}`, "warn");
     }
   }
 
   currentRoom = localRoom(prompt);
   renderRoom(currentRoom);
-  setStatus(allowAi ? "Generated locally. Add a valid NVIDIA key for model output." : "Ready. Local generator loaded.", "ok");
+  els.generationMode.textContent = "Local engine";
+  setStatus(allowAi ? "Generated locally. Add a valid NVIDIA key for live model output." : "Local generator loaded. Add a key only if you want live NVIDIA calls.", "ok");
 }
 
 async function generateWithNvidia(prompt) {
-  const apiKey = els.apiKey.value.trim();
-  const model = els.model.value.trim() || "deepseek-ai/deepseek-v3.1";
   const response = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
+      Authorization: `Bearer ${els.apiKey.value.trim()}`,
     },
     body: JSON.stringify({
-      model,
-      temperature: 0.75,
-      max_tokens: 1800,
+      model: els.chatModel.value,
+      temperature: 0.82,
+      top_p: 0.92,
+      max_tokens: 2200,
       messages: [
         {
           role: "system",
-          content: "You design whimsical Sims rooms. Return only strict JSON with no markdown. Schema: {title:string, story:string, palette:{wall:string,floor:string,accent:string,light:string}, objects:[{type:string,label:string,x:number,z:number,color:string,note:string}], buildList:string[]}. Types must be from bed,desk,sofa,plant,rug,lamp,shelf,painting,clutter,mirror,books,catbed,telescope. Coordinates x and z must be between -3 and 3. Include 9 to 14 objects. Hex colors only."
+          content: "You are a high-end interactive 3D room director for Sims players. Return only valid JSON. No markdown. Schema: {title:string, roomType:string, dimensions:{width:number,depth:number,height:number}, story:string, palette:{wall:string,floor:string,accent:string,light:string,trim:string}, zones:[{name:string,description:string}], objects:[{type:string,label:string,x:number,z:number,rotation:number,color:string,note:string}], buildList:string[]}. Types: bed,desk,sofa,plant,rug,lamp,shelf,painting,clutter,mirror,books,catbed,telescope,window,curtain,wardrobe,chair,table,divider,poster,candle,console,crystal. Coordinates x and z from -3.2 to 3.2. Include 16 to 26 objects, with at least 4 wall/decor objects. Make it feel like a Rooms.xyz-style miniature world and a Sims build guide. Hex colors only."
         },
         { role: "user", content: prompt }
       ]
     })
   });
 
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`${response.status} ${text.slice(0, 140)}`);
-  }
-
+  if (!response.ok) throw new Error(`${response.status} ${(await response.text()).slice(0, 180)}`);
   const data = await response.json();
   const content = data.choices?.[0]?.message?.content || "";
-  const jsonText = content.replace(/^```json/i, "").replace(/^```/, "").replace(/```$/, "").trim();
-  return JSON.parse(jsonText);
+  return JSON.parse(extractJson(content));
+}
+
+async function generateConceptImage() {
+  if (!els.apiKey.value.trim()) {
+    setStatus("Paste a NVIDIA key to generate concept art. The 3D room still works without one.", "warn");
+    return;
+  }
+  const room = currentRoom || localRoom(els.prompt.value);
+  setStatus(`Generating concept art with ${selectedLabel(els.imageModel)}...`, "work");
+  els.conceptImage.textContent = "Rendering a moodboard image...";
+
+  const imagePrompt = [
+    `A beautiful award-winning website hero image of a Sims-inspired miniature 3D room called ${room.title}.`,
+    room.story,
+    `Palette: wall ${room.palette.wall}, floor ${room.palette.floor}, accent ${room.palette.accent}.`,
+    "Isometric room diorama, collectible toy-like furniture, cozy game UI mood, detailed interior design, not photorealistic people, no text, no watermark."
+  ].join(" ");
+
+  try {
+    const response = await fetch("https://integrate.api.nvidia.com/v1/images/generations", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${els.apiKey.value.trim()}`,
+      },
+      body: JSON.stringify({
+        model: els.imageModel.value,
+        prompt: imagePrompt,
+        size: "1024x1024",
+        n: 1,
+      })
+    });
+
+    if (!response.ok) throw new Error(`${response.status} ${(await response.text()).slice(0, 180)}`);
+    const data = await response.json();
+    const item = data.data?.[0] || data.images?.[0] || {};
+    const url = item.url || (item.b64_json ? `data:image/png;base64,${item.b64_json}` : item.image_url);
+    if (!url) throw new Error("No image URL returned by the selected model.");
+    els.conceptImage.innerHTML = "";
+    const img = document.createElement("img");
+    img.alt = `${room.title} concept art`;
+    img.src = url;
+    els.conceptImage.appendChild(img);
+    setStatus(`Concept art generated with ${selectedLabel(els.imageModel)}.`, "ok");
+  } catch (error) {
+    console.warn(error);
+    els.conceptImage.textContent = "Image generation did not return an image. Try another image model from the dropdown.";
+    setStatus(`Image generation failed. ${friendlyError(error)}`, "warn");
+  }
 }
 
 function localRoom(prompt) {
@@ -139,24 +224,30 @@ function localRoom(prompt) {
   const sim = inferSim(text);
   const mood = inferMood(text, style);
   const rand = seededRandom(hash(prompt) + seedOffset);
-  const objects = baseObjects(style, palette, sim, mood).map((obj, index) => ({
-    ...obj,
-    x: clamp(obj.x + (rand() - 0.5) * 0.55, -3.1, 3.1),
-    z: clamp(obj.z + (rand() - 0.5) * 0.55, -3.1, 3.1),
-    id: `${obj.type}-${index}`,
-  }));
+  const wallTypes = new Set(["painting", "poster", "window", "curtain", "mirror"]);
+  const objects = baseObjects(style, palette, sim, mood)
+    .map((obj, index) => ({
+      ...obj,
+      x: clamp(obj.x + (wallTypes.has(obj.type) ? 0 : (rand() - 0.5) * 0.44), -3.25, 3.25),
+      z: clamp(obj.z + (wallTypes.has(obj.type) ? 0 : (rand() - 0.5) * 0.44), -3.25, 3.25),
+      rotation: obj.rotation ?? (wallTypes.has(obj.type) ? 0 : Math.round((rand() - 0.5) * 30)),
+      id: `${obj.type}-${index}`,
+    }));
 
   return {
-    title: titleFor(style, sim),
-    story: `This room belongs to ${sim}, built around ${mood}. It reads like a Sims save file with motives, secrets, and one very specific design obsession: every object hints at who lives here, what they are hiding, and what they are about to do next.`,
+    title: titleFor(style),
+    roomType: `${style} Sims diorama`,
+    dimensions: { width: 7.4, depth: 7.4, height: 4.2 },
+    story: `This is a tiny playable-feeling room for ${sim}. The design language is ${mood}: every wall, rug, lamp, and clutter stack is there to make a Sims player immediately imagine traits, wants, fears, and a save-file scandal.`,
     palette,
+    zones: zonesFor(style),
     objects,
     buildList: buildListFor(style, sim, objects),
   };
 }
 
 function pickStyle(text) {
-  if (/vampire|blood|goth|blackout|crypt|cursed/.test(text)) return "vampire";
+  if (/vampire|blood|blackout|crypt|cursed/.test(text)) return "vampire";
   if (/rich|gold|heir|legacy|luxury|mansion/.test(text)) return "rich";
   if (/starter|broke|cheap|tiny|apartment|college/.test(text)) return "starter";
   if (/alien|science|lab|neon|space/.test(text)) return "alien";
@@ -166,142 +257,203 @@ function pickStyle(text) {
 }
 
 function inferSim(text) {
-  if (text.includes("vampire")) return "a dramatic vampire trying to seem normal";
-  if (text.includes("alien")) return "an alien scientist with a very flimsy human disguise";
-  if (text.includes("college")) return "a broke college Sim with suspiciously ambitious dreams";
-  if (text.includes("heir") || text.includes("legacy")) return "a legacy heir with money, pressure, and family rumors";
-  if (text.includes("cat")) return "a plant-loving Sim whose cat clearly owns the lease";
-  if (text.includes("spell") || text.includes("witch")) return "a cozy spellcaster who calls clutter a ritual system";
-  return "a Sim with main-character energy and questionable taste";
+  if (text.includes("vampire")) return "a dramatic vampire trying to pass as a harmless neighbor";
+  if (text.includes("alien")) return "an alien scientist whose human disguise is one bad conversation from failing";
+  if (text.includes("college")) return "a broke college Sim grinding skills between chaos and ramen";
+  if (text.includes("heir") || text.includes("legacy")) return "a legacy heir carrying money, pressure, and family rumors";
+  if (text.includes("cat")) return "a plant-loving Sim whose cat has final approval on all furniture";
+  if (text.includes("spell") || text.includes("witch")) return "a cozy spellcaster who turns clutter into ritual infrastructure";
+  return "a Sim with main-character energy and suspiciously specific taste";
 }
 
 function inferMood(text, style) {
   const moods = {
-    vampire: "romantic menace, blackout comfort, and antique drama",
-    rich: "expensive taste, inherited pressure, and curated perfection",
-    starter: "budget survival, thrifted hope, and tiny-space problem solving",
-    alien: "glowing experiments, star charts, and social camouflage",
-    plant: "sunlit chaos, terracotta warmth, and leafy obsession",
-    goth: "moody walls, soft rebellion, and candlelit secrets",
-    witchy: "warm lamps, moon symbols, herbs, and cozy occult clutter",
+    vampire: "velvet menace, blackout comfort, antique drama, and romance novel lighting",
+    rich: "inherited money, museum-level polish, emotional distance, and portrait-wall pressure",
+    starter: "budget survival, thrift-store hope, tiny-space tricks, and deeply earned coziness",
+    alien: "glowing experiments, star charts, specimen clutter, and not-quite-human normalcy",
+    plant: "sunlit chaos, terracotta warmth, cat-owned corners, and leafy overcommitment",
+    goth: "soft rebellion, candlelit secrecy, purple shadows, and dramatic wall art",
+    witchy: "moon symbols, herb shelves, warm lamps, old books, and cozy occult clutter",
   };
-  return text.includes("cursed") ? "barely contained curse energy and suspiciously meaningful decor" : moods[style];
+  return text.includes("cursed") ? "barely contained curse energy with suspiciously meaningful decor" : moods[style];
 }
 
-function titleFor(style, sim) {
-  const titles = {
-    vampire: "Cursed Vampire Blackout Suite",
-    rich: "Legacy Heir Golden Drama Room",
-    starter: "Starter Home Glow-Up Nook",
-    alien: "Alien Scientist Disguise Studio",
-    plant: "Plant Mom Greenhouse Bedroom",
+function titleFor(style) {
+  return {
+    vampire: "Cursed Vampire Blackout Loft",
+    rich: "Legacy Heir Golden Suite",
+    starter: "Starter Home Glow-Up Room",
+    alien: "Alien Scientist Disguise Lab",
+    plant: "Plant Mom Greenhouse Studio",
     goth: "Soft Goth Secret-Keeper Room",
-    witchy: "Cozy Witchy Moonlit Bedroom",
+    witchy: "Cozy Witchy Greenhouse Bedroom",
+  }[style];
+}
+
+function zonesFor(style) {
+  const common = [
+    { name: "Sleep", description: "A mood-first bed zone with enough personality to identify the Sim instantly." },
+    { name: "Skill", description: "Desk or hobby area for career grind, occult research, science, writing, or social avoidance." },
+    { name: "Lore Wall", description: "A vertical storytelling strip filled with portraits, posters, mirrors, shelves, and secrets." },
+  ];
+  const extra = {
+    vampire: { name: "Blackout Nook", description: "Curtains, velvet seating, and suspiciously theatrical lamps." },
+    rich: { name: "Inheritance Display", description: "Gold accents and family objects that feel expensive and emotionally loaded." },
+    starter: { name: "Tiny Fix", description: "Cheap multifunctional furniture arranged like a survival puzzle." },
+    alien: { name: "Specimen Corner", description: "Neon experiments and telescope placement for late-night abductions." },
+    plant: { name: "Greenhouse Edge", description: "Layered plants, terracotta, and a cat-approved sunny corner." },
+    goth: { name: "Candle Drama", description: "Moody seating and wall decor for screenshots that look like album covers." },
+    witchy: { name: "Ritual Corner", description: "Herbs, crystals, books, moon charts, and cat familiar infrastructure." },
   };
-  return titles[style] || `Room for ${sim}`;
+  return [...common, extra[style]];
 }
 
 function baseObjects(style, p, sim, mood) {
-  const notes = {
-    bed: `The bed is positioned like ${sim} planned the room at 2 a.m. and somehow made it charming.`,
-    desk: `This desk is where ${mood} turns into unpaid bills, skill-building, and dramatic screenshots.`,
-    sofa: "A social object that says guests are welcome, but only if they understand the household lore.",
-    plant: "A plant with more personality than most townies. It is thriving despite suspicious circumstances.",
-    rug: "The rug ties the room together and hides at least one bad build-mode decision.",
-    lamp: "Warm lighting makes the room feel expensive, haunted, or emotionally stable depending on the angle.",
-    shelf: "A shelf full of tiny storytelling props, because Sims rooms need evidence of a life lived.",
-    painting: "Wall art chosen for vibes first and resale value never.",
-    clutter: "Clutter that makes the room feel lived-in instead of catalogue-perfect.",
-    mirror: "A mirror placed for outfit checks, occult symbolism, or vampire irony.",
-    books: "Books stacked where a responsible Sim would put storage.",
-    catbed: "The cat bed is placed in the best spot, proving who actually controls this household.",
-    telescope: "A telescope for science, romance, alien contact, or neighbor drama.",
-  };
+  const notes = objectNotes(sim, mood);
   const common = [
-    { type: "bed", label: "Story-Heavy Bed", x: -2.1, z: 1.5, color: p.accent, note: notes.bed },
-    { type: "desk", label: "Skill Grind Desk", x: 1.7, z: -1.6, color: p.floor, note: notes.desk },
-    { type: "rug", label: "Moodboard Rug", x: 0, z: 0.45, color: p.accent, note: notes.rug },
-    { type: "lamp", label: "Vibe-Saving Lamp", x: -2.6, z: -1.6, color: p.light, note: notes.lamp },
-    { type: "shelf", label: "Lore Shelf", x: 2.65, z: 0.2, color: p.floor, note: notes.shelf },
-    { type: "painting", label: "Suspicious Wall Art", x: -0.8, z: -3.05, color: p.accent, note: notes.painting },
-    { type: "clutter", label: "Personality Clutter", x: 0.8, z: -0.8, color: p.light, note: notes.clutter },
-    { type: "books", label: "Unread Skill Books", x: 2.1, z: 1.5, color: p.accent, note: notes.books },
+    { type: "bed", label: "Trait-Revealing Bed", x: -2.12, z: 1.42, color: p.accent, note: notes.bed },
+    { type: "rug", label: "Screenshot Rug", x: -0.25, z: 0.42, color: p.accent, note: notes.rug },
+    { type: "desk", label: "Skill Grind Desk", x: 1.92, z: -1.62, color: p.floor, note: notes.desk },
+    { type: "chair", label: "Barely Ergonomic Chair", x: 1.2, z: -1.2, color: p.accent, note: notes.chair },
+    { type: "shelf", label: "Lore Shelf", x: 3.06, z: 0.1, rotation: -90, color: p.floor, note: notes.shelf },
+    { type: "lamp", label: "Mood-Saving Lamp", x: -2.92, z: -1.95, color: p.light, note: notes.lamp },
+    { type: "painting", label: "Personality Poster", x: -1.1, z: -3.33, color: p.accent, note: notes.painting },
+    { type: "window", label: "Room-Defining Window", x: 1.35, z: -3.37, color: p.trim, note: notes.window },
+    { type: "curtain", label: "Dramatic Curtains", x: 2.15, z: -3.34, color: p.accent, note: notes.curtain },
+    { type: "books", label: "Unread Skill Books", x: 2.45, z: 1.55, color: p.accent, note: notes.books },
+    { type: "clutter", label: "Actually Useful Clutter", x: 0.68, z: -0.86, color: p.light, note: notes.clutter },
+    { type: "candle", label: "Suspicious Candle Cluster", x: -1.1, z: -1.52, color: p.light, note: notes.candle },
+    { type: "wardrobe", label: "CAS Emergency Wardrobe", x: -3.05, z: 0.26, rotation: 90, color: p.floor, note: notes.wardrobe },
+    { type: "table", label: "Tiny Drama Table", x: 0.85, z: 1.55, color: p.floor, note: notes.table },
   ];
+
   const extras = {
     vampire: [
-      { type: "mirror", label: "Ironic Antique Mirror", x: 2.7, z: -2.1, color: "#222222", note: notes.mirror },
-      { type: "sofa", label: "Velvet Brooding Settee", x: -0.8, z: -1.3, color: "#7c1436", note: notes.sofa },
+      { type: "mirror", label: "Ironic Antique Mirror", x: 3.24, z: -2.18, rotation: -90, color: "#d6e5ef", note: notes.mirror },
+      { type: "sofa", label: "Velvet Brooding Settee", x: -0.95, z: -1.72, color: "#7e1537", note: notes.sofa },
+      { type: "console", label: "Forbidden Letter Console", x: -3.08, z: -2.2, rotation: 90, color: "#402130", note: notes.console },
+      { type: "divider", label: "Coffin Privacy Screen", x: 0.1, z: 2.82, color: "#2c1a24", note: notes.divider },
     ],
     rich: [
-      { type: "sofa", label: "Inheritance Sofa", x: -0.8, z: -1.3, color: "#d4a73c", note: notes.sofa },
-      { type: "mirror", label: "Gold Ego Mirror", x: 2.7, z: -2.1, color: "#d9b85d", note: notes.mirror },
+      { type: "sofa", label: "Inheritance Settee", x: -0.95, z: -1.72, color: "#d4a72f", note: notes.sofa },
+      { type: "mirror", label: "Gold Ego Mirror", x: 3.24, z: -2.18, rotation: -90, color: "#e8c45a", note: notes.mirror },
+      { type: "console", label: "Family Portrait Console", x: -3.08, z: -2.2, rotation: 90, color: "#754b25", note: notes.console },
+      { type: "crystal", label: "Overpriced Crystal Bowl", x: 0.82, z: 1.55, color: "#fff0a5", note: notes.crystal },
     ],
     starter: [
-      { type: "plant", label: "One Affordable Plant", x: -2.8, z: -0.2, color: "#3e8a4d", note: notes.plant },
-      { type: "sofa", label: "Thrifted Futon", x: -0.8, z: -1.3, color: "#4e86a6", note: notes.sofa },
+      { type: "plant", label: "One Affordable Plant", x: -2.88, z: -0.35, color: "#3e8a4d", note: notes.plant },
+      { type: "sofa", label: "Thrifted Futon", x: -0.95, z: -1.72, color: "#4f89ad", note: notes.sofa },
+      { type: "divider", label: "Makeshift Room Divider", x: 0.12, z: 2.82, color: "#b9aa8c", note: notes.divider },
+      { type: "poster", label: "Dream Job Poster", x: -2.7, z: -3.34, color: "#ffb35c", note: notes.poster },
     ],
     alien: [
-      { type: "telescope", label: "Definitely Normal Telescope", x: -2.5, z: -1.9, color: "#31e6c4", note: notes.telescope },
-      { type: "clutter", label: "Specimen Jars", x: 1, z: 1.7, color: "#68f2d5", note: notes.clutter },
+      { type: "telescope", label: "Definitely Normal Telescope", x: -2.55, z: -2.18, color: "#33e5c5", note: notes.telescope },
+      { type: "clutter", label: "Specimen Jars", x: 1.02, z: 1.75, color: "#7af6de", note: notes.clutter },
+      { type: "console", label: "Human Disguise Console", x: -3.08, z: -2.2, rotation: 90, color: "#1f5264", note: notes.console },
+      { type: "crystal", label: "Glowing Meteor Shard", x: 0.92, z: 1.55, color: "#7af6de", note: notes.crystal },
     ],
     plant: [
-      { type: "plant", label: "Dramatic Monstera", x: -2.8, z: -0.2, color: "#3b8b54", note: notes.plant },
-      { type: "catbed", label: "Royal Cat Bed", x: 1.8, z: 1.8, color: "#e59f5d", note: notes.catbed },
-      { type: "plant", label: "Overwatered Fern", x: 2.6, z: -1.5, color: "#2d7a44", note: notes.plant },
+      { type: "plant", label: "Dramatic Monstera", x: -2.88, z: -0.35, color: "#3c9058", note: notes.plant },
+      { type: "catbed", label: "Royal Cat Bed", x: 1.85, z: 1.86, color: "#e59f5d", note: notes.catbed },
+      { type: "plant", label: "Overwatered Fern", x: 2.72, z: -0.86, color: "#2e7a45", note: notes.plant },
+      { type: "plant", label: "Hanging Vine Wall", x: -3.12, z: -1.0, rotation: 90, color: "#4aa663", note: notes.plant },
+      { type: "poster", label: "Plant Care Calendar", x: -2.7, z: -3.34, color: "#7fbf7c", note: notes.poster },
     ],
     goth: [
-      { type: "mirror", label: "Dramatic Black Mirror", x: 2.7, z: -2.1, color: "#101010", note: notes.mirror },
-      { type: "sofa", label: "Sad Velvet Sofa", x: -0.8, z: -1.3, color: "#65407d", note: notes.sofa },
+      { type: "mirror", label: "Dramatic Black Mirror", x: 3.24, z: -2.18, rotation: -90, color: "#111111", note: notes.mirror },
+      { type: "sofa", label: "Sad Velvet Sofa", x: -0.95, z: -1.72, color: "#6d4984", note: notes.sofa },
+      { type: "poster", label: "Album-Cover Poster", x: -2.7, z: -3.34, color: "#b782e0", note: notes.poster },
+      { type: "crystal", label: "Questionable Crystal", x: 0.82, z: 1.55, color: "#b782e0", note: notes.crystal },
     ],
     witchy: [
-      { type: "plant", label: "Potion Herb Planter", x: -2.8, z: -0.2, color: "#3b8b54", note: notes.plant },
-      { type: "catbed", label: "Familiar's Cat Bed", x: 1.8, z: 1.8, color: "#8556a7", note: notes.catbed },
-      { type: "telescope", label: "Moon Phase Telescope", x: -2.5, z: -1.9, color: "#8c61c8", note: notes.telescope },
+      { type: "plant", label: "Potion Herb Planter", x: -2.88, z: -0.35, color: "#3c9058", note: notes.plant },
+      { type: "catbed", label: "Familiar's Cat Bed", x: 1.85, z: 1.86, color: "#9d70dd", note: notes.catbed },
+      { type: "telescope", label: "Moon Phase Telescope", x: -2.55, z: -2.18, color: "#9d70dd", note: notes.telescope },
+      { type: "crystal", label: "Charged Crystal Cluster", x: 0.82, z: 1.55, color: "#e1c2ff", note: notes.crystal },
+      { type: "poster", label: "Moon Calendar Poster", x: -2.7, z: -3.34, color: "#c9a8ff", note: notes.poster },
     ],
   };
+
   return [...common, ...(extras[style] || extras.witchy)];
 }
 
-function buildListFor(style, sim, objects) {
-  const styleItems = {
-    vampire: ["Dark wallpaper", "Blackout curtains", "Velvet seating", "Antique mirror", "Red accent lighting"],
-    rich: ["Gold accents", "Ornate wall art", "Expensive bed frame", "Polished wood floor", "Family portrait wall"],
-    starter: ["Cheap bed", "Thrifted desk", "Mismatched rug", "Compact storage", "One hopeful plant"],
-    alien: ["Neon lights", "Science clutter", "Telescope", "Metal shelves", "Star chart art"],
-    plant: ["Terracotta planters", "Hanging greenery", "Warm wood floor", "Cat bed", "Sunlit wall color"],
-    goth: ["Dark wall paint", "Purple accent decor", "Candles", "Black mirror", "Moody rug"],
-    witchy: ["Moon decor", "Herb planters", "Purple blanket", "Warm lamps", "Books and potion clutter"],
+function objectNotes(sim, mood) {
+  return {
+    bed: `The bed placement tells you ${sim} has priorities: comfort first, routing second, screenshots always.`,
+    desk: `This is where ${mood} becomes skill points, unpaid bills, and late-night save-file decisions.`,
+    chair: "The chair looks cute enough for a screenshot and questionable enough for actual posture.",
+    sofa: "Guests can sit here, but the room makes it clear they are entering someone else's lore.",
+    plant: "This plant is not just decor. It is proof the Sim believes they can fix everything with sunlight and denial.",
+    rug: "The rug acts like a visual spawn point for the whole room, hiding bad flooring choices beautifully.",
+    lamp: "The lamp is doing emotional labor for every object around it.",
+    shelf: "A vertical inventory of who lives here: tiny trophies, weird jars, half-finished hobbies, and evidence.",
+    painting: "Wall art chosen for narrative value over resale value, as all Sims art should be.",
+    poster: "A cheap poster with expensive personality. Perfect for telegraphing wants and backstory.",
+    clutter: "The clutter makes the room feel played-in instead of catalogue-perfect.",
+    mirror: "A mirror for outfit checks, occult irony, or staring dramatically after a bad date.",
+    books: "Skill books stacked where a responsible Sim would put storage.",
+    catbed: "The cat bed is in a premium location, confirming who owns the household.",
+    telescope: "For science, romance, alien contact, or neighborhood drama. Usually all four.",
+    window: "The window changes the whole mood: lighting, aspiration, and whether vampires are making good choices.",
+    curtain: "Curtains that turn architecture into personality.",
+    candle: "Candles: the cheapest way to imply mystery, ritual, or poor fire-safety decisions.",
+    wardrobe: "A CAS emergency station for when the Sim's life changes but the outfit has not caught up.",
+    table: "A tiny surface for keys, crystals, homework, or a plot-relevant coffee cup.",
+    console: "A console table that exists mainly to hold secrets at waist height.",
+    divider: "The divider makes one room feel like three, which is exactly the kind of Sims trick people love.",
+    crystal: "A shiny object with enough mystical ambiguity to work in almost any expansion pack.",
   };
-  return [
-    `Design for ${sim}`,
-    ...(styleItems[style] || styleItems.witchy),
-    ...objects.slice(0, 6).map((obj) => obj.label),
-  ];
+}
+
+function buildListFor(style, sim, objects) {
+  const items = {
+    vampire: ["Blackout curtains", "Velvet loveseat", "Dark paneled wallpaper", "Antique mirror", "Red practical lights", "Old letter clutter"],
+    rich: ["Gold-trim wallpaper", "Polished wood floor", "Ornate bed", "Family portraits", "Console table", "Warm chandelier lighting"],
+    starter: ["Cheap double bed", "Thrifted desk", "Futon", "Mismatched rug", "Compact wardrobe", "Poster wall"],
+    alien: ["Neon wall lights", "Telescope", "Metal desk", "Specimen clutter", "Star chart posters", "Cool blue flooring"],
+    plant: ["Terracotta planters", "Green wallpaper", "Cat bed", "Hanging vines", "Wood floors", "Soft yellow lamps"],
+    goth: ["Dark wallpaper", "Purple velvet sofa", "Candles", "Black mirror", "Band posters", "Crystal clutter"],
+    witchy: ["Moon calendar", "Herb planters", "Purple bedding", "Warm lamps", "Bookshelves", "Crystal clutter"],
+  };
+  return [`Design target: ${sim}`, ...(items[style] || items.witchy), ...objects.slice(0, 8).map((obj) => obj.label)];
 }
 
 function normalizeRoom(room, prompt) {
   const fallback = localRoom(prompt);
   const palette = { ...fallback.palette, ...(room.palette || {}) };
-  const objects = Array.isArray(room.objects) && room.objects.length ? room.objects : fallback.objects;
+  const sourceObjects = Array.isArray(room.objects) && room.objects.length ? room.objects : fallback.objects;
   return {
-    title: String(room.title || fallback.title).slice(0, 80),
-    story: String(room.story || fallback.story).slice(0, 800),
+    title: String(room.title || fallback.title).slice(0, 88),
+    roomType: String(room.roomType || fallback.roomType).slice(0, 64),
+    dimensions: normalizeDimensions(room.dimensions),
+    story: String(room.story || fallback.story).slice(0, 900),
     palette,
-    objects: objects.slice(0, 16).map((obj, index) => ({
-      id: `${obj.type || "clutter"}-${index}`,
+    zones: Array.isArray(room.zones) ? room.zones.slice(0, 5) : fallback.zones,
+    objects: sourceObjects.slice(0, 28).map((obj, index) => ({
+      id: `${validType(obj.type)}-${index}`,
       type: validType(obj.type),
-      label: String(obj.label || obj.type || "Story Object").slice(0, 60),
-      x: clamp(Number(obj.x) || 0, -3.1, 3.1),
-      z: clamp(Number(obj.z) || 0, -3.1, 3.1),
+      label: String(obj.label || obj.type || "Story Object").slice(0, 68),
+      x: clamp(Number(obj.x) || 0, -3.25, 3.25),
+      z: clamp(Number(obj.z) || 0, -3.25, 3.25),
+      rotation: Number(obj.rotation) || 0,
       color: validHex(obj.color) ? obj.color : palette.accent,
-      note: String(obj.note || "A tiny storytelling object with suspiciously good vibes.").slice(0, 260),
+      note: String(obj.note || "A small storytelling object with big save-file energy.").slice(0, 320),
     })),
-    buildList: Array.isArray(room.buildList) ? room.buildList.slice(0, 18).map(String) : fallback.buildList,
+    buildList: Array.isArray(room.buildList) ? room.buildList.slice(0, 22).map(String) : fallback.buildList,
+  };
+}
+
+function normalizeDimensions(dimensions = {}) {
+  return {
+    width: clamp(Number(dimensions.width) || 7.4, 5.8, 9.2),
+    depth: clamp(Number(dimensions.depth) || 7.4, 5.8, 9.2),
+    height: clamp(Number(dimensions.height) || 4.2, 3.2, 5.2),
   };
 }
 
 function validType(type) {
-  const valid = ["bed", "desk", "sofa", "plant", "rug", "lamp", "shelf", "painting", "clutter", "mirror", "books", "catbed", "telescope"];
+  const valid = ["bed", "desk", "sofa", "plant", "rug", "lamp", "shelf", "painting", "clutter", "mirror", "books", "catbed", "telescope", "window", "curtain", "wardrobe", "chair", "table", "divider", "poster", "candle", "console", "crystal"];
   return valid.includes(type) ? type : "clutter";
 }
 
@@ -311,16 +463,22 @@ function validHex(color) {
 
 function initThree() {
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x201625);
-  camera = new THREE.PerspectiveCamera(48, 1, 0.1, 100);
-  camera.position.set(5, 5, 7);
-  renderer = new THREE.WebGLRenderer({ antialias: true });
+  camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
+  camera.position.set(6.8, 5.7, 7.5);
+  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
   els.scene.appendChild(renderer.domElement);
+
   controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
-  controls.target.set(0, 0.8, 0);
+  controls.dampingFactor = 0.07;
+  controls.minDistance = 5;
+  controls.maxDistance = 14;
+  controls.target.set(0, 1.15, 0);
+
   raycaster = new THREE.Raycaster();
   pointer = new THREE.Vector2();
   renderer.domElement.addEventListener("pointerdown", onPointerDown);
@@ -333,84 +491,176 @@ function renderRoom(room) {
   currentRoom = room;
   clickable = [];
   scene.clear();
-  scene.background = new THREE.Color(room.palette.wall);
+  scene.background = new THREE.Color(0x11110f);
   addLights(room.palette);
-  addRoomShell(room.palette);
+  addRoomShell(room);
+  addZones(room);
   room.objects.forEach(addObject);
   updateOutput(room);
+  renderRoomCards(room.roomType || room.title);
 }
 
-function addLights(palette) {
-  const ambient = new THREE.HemisphereLight(0xffffff, 0x2a1c2f, 1.8);
-  scene.add(ambient);
-  const key = new THREE.DirectionalLight(0xffffff, 2.2);
-  key.position.set(4, 7, 5);
-  key.castShadow = true;
-  scene.add(key);
-  const mood = new THREE.PointLight(palette.light, 3.2, 9);
-  mood.position.set(-2.4, 2.7, -1.8);
-  scene.add(mood);
+function addLights(p) {
+  scene.add(new THREE.HemisphereLight(0xfff4dd, 0x161014, 2.2));
+  const sun = new THREE.DirectionalLight(0xfff1d0, 3.2);
+  sun.position.set(4.6, 7.8, 5.4);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  scene.add(sun);
+  const accent = new THREE.PointLight(p.light, 4, 8.5);
+  accent.position.set(-2.8, 2.25, -2.1);
+  scene.add(accent);
+  const rim = new THREE.PointLight(p.accent, 2.4, 9);
+  rim.position.set(3, 2.8, 2.8);
+  scene.add(rim);
 }
 
-function addRoomShell(p) {
-  const floor = mesh(new THREE.BoxGeometry(7.2, 0.16, 7.2), p.floor, [0, -0.08, 0]);
+function addRoomShell(room) {
+  const { width, depth, height } = room.dimensions;
+  const p = room.palette;
+  const floor = mesh(new THREE.BoxGeometry(width, 0.18, depth), p.floor, [0, -0.09, 0]);
   floor.receiveShadow = true;
   scene.add(floor);
-  const backWall = mesh(new THREE.BoxGeometry(7.2, 3.7, 0.16), p.wall, [0, 1.78, -3.6]);
-  const leftWall = mesh(new THREE.BoxGeometry(0.16, 3.7, 7.2), p.wall, [-3.6, 1.78, 0]);
+
+  const backWall = mesh(new THREE.BoxGeometry(width, height, 0.18), p.wall, [0, height / 2 - 0.04, -depth / 2]);
+  const leftWall = mesh(new THREE.BoxGeometry(0.18, height, depth), p.wall, [-width / 2, height / 2 - 0.04, 0]);
   scene.add(backWall, leftWall);
-  const grid = new THREE.GridHelper(7.2, 12, 0xffffff, 0xffffff);
-  grid.material.opacity = 0.12;
-  grid.material.transparent = true;
-  scene.add(grid);
+
+  addTrim(width, depth, height, p.trim);
+  addWallpaperPattern(width, depth, height, p.accent);
+  addCeilingGrid(width, depth, height, p.trim);
+  const platform = mesh(new THREE.BoxGeometry(width + 0.45, 0.12, depth + 0.45), "#090908", [0, -0.22, 0]);
+  scene.add(platform);
+}
+
+function addTrim(width, depth, height, color) {
+  const strips = [
+    [new THREE.BoxGeometry(width, 0.1, 0.16), [0, 0.18, -depth / 2 + 0.08]],
+    [new THREE.BoxGeometry(0.16, 0.1, depth), [-width / 2 + 0.08, 0.18, 0]],
+    [new THREE.BoxGeometry(width, 0.12, 0.18), [0, height - 0.18, -depth / 2 + 0.08]],
+    [new THREE.BoxGeometry(0.18, 0.12, depth), [-width / 2 + 0.08, height - 0.18, 0]],
+  ];
+  strips.forEach(([geo, pos]) => scene.add(mesh(geo, color, pos)));
+}
+
+function addWallpaperPattern(width, depth, height, color) {
+  for (let x = -width / 2 + 0.65; x < width / 2; x += 0.72) {
+    scene.add(mesh(new THREE.BoxGeometry(0.035, height - 0.6, 0.035), color, [x, height / 2, -depth / 2 + 0.102]));
+  }
+  for (let z = -depth / 2 + 0.65; z < depth / 2; z += 0.72) {
+    scene.add(mesh(new THREE.BoxGeometry(0.035, height - 0.6, 0.035), color, [-width / 2 + 0.102, height / 2, z]));
+  }
+}
+
+function addCeilingGrid(width, depth, height, color) {
+  for (let x = -width / 2 + 0.9; x < width / 2; x += 1.35) scene.add(mesh(new THREE.BoxGeometry(0.06, 0.06, depth), color, [x, height + 0.05, 0]));
+  for (let z = -depth / 2 + 0.9; z < depth / 2; z += 1.35) scene.add(mesh(new THREE.BoxGeometry(width, 0.06, 0.06), color, [0, height + 0.06, z]));
+}
+
+function addZones(room) {
+  const colors = [room.palette.accent, room.palette.light, room.palette.trim, "#ffffff"];
+  room.zones?.slice(0, 4).forEach((zone, index) => {
+    const x = [-2.1, 1.9, -2.15, 1.85][index] || 0;
+    const z = [1.95, -1.95, -1.95, 1.95][index] || 0;
+    const zoneMesh = mesh(new THREE.CylinderGeometry(0.76, 0.76, 0.025, 46), colors[index], [x, 0.025, z], [0, 0, 0], 0.18);
+    zoneMesh.userData = { label: zone.name, note: zone.description, type: "zone" };
+    clickable.push(zoneMesh);
+    scene.add(zoneMesh);
+  });
 }
 
 function addObject(obj) {
   const group = new THREE.Group();
   group.position.set(obj.x, 0, obj.z);
+  group.rotation.y = THREE.MathUtils.degToRad(obj.rotation || 0);
   group.userData = obj;
   const c = obj.color;
 
+  const add = (geo, color, pos, rot = [0, 0, 0], opacity = 1) => group.add(mesh(geo, color, pos, rot, opacity));
+
   if (obj.type === "bed") {
-    group.add(mesh(new THREE.BoxGeometry(1.5, 0.34, 2.1), c, [0, 0.32, 0]));
-    group.add(mesh(new THREE.BoxGeometry(1.5, 0.18, 0.38), "#f5eddc", [0, 0.64, -0.7]));
+    add(new THREE.BoxGeometry(1.65, 0.42, 2.15), c, [0, 0.34, 0]);
+    add(new THREE.BoxGeometry(1.65, 0.28, 0.32), "#f4eadb", [0, 0.77, -0.74]);
+    add(new THREE.BoxGeometry(1.54, 0.18, 1.15), lighten(c, 0.22), [0, 0.68, 0.34]);
+    add(new THREE.BoxGeometry(1.85, 1.0, 0.18), darken(c, 0.16), [0, 0.78, -1.16]);
   } else if (obj.type === "desk") {
-    group.add(mesh(new THREE.BoxGeometry(1.45, 0.16, 0.74), c, [0, 0.76, 0]));
-    group.add(mesh(new THREE.BoxGeometry(0.12, 0.76, 0.12), c, [-0.56, 0.36, -0.24]));
-    group.add(mesh(new THREE.BoxGeometry(0.12, 0.76, 0.12), c, [0.56, 0.36, 0.24]));
+    add(new THREE.BoxGeometry(1.55, 0.16, 0.76), c, [0, 0.82, 0]);
+    [-0.62, 0.62].forEach((x) => [-0.28, 0.28].forEach((z) => add(new THREE.BoxGeometry(0.1, 0.82, 0.1), darken(c, 0.1), [x, 0.4, z])));
+    add(new THREE.BoxGeometry(0.48, 0.32, 0.08), "#1d2530", [0.26, 1.08, -0.16]);
+  } else if (obj.type === "chair") {
+    add(new THREE.BoxGeometry(0.58, 0.16, 0.58), c, [0, 0.48, 0]);
+    add(new THREE.BoxGeometry(0.58, 0.78, 0.12), c, [0, 0.83, 0.26]);
+    add(new THREE.CylinderGeometry(0.04, 0.04, 0.48, 12), darken(c, 0.18), [0, 0.24, 0]);
   } else if (obj.type === "sofa") {
-    group.add(mesh(new THREE.BoxGeometry(1.8, 0.45, 0.8), c, [0, 0.35, 0]));
-    group.add(mesh(new THREE.BoxGeometry(1.8, 0.9, 0.18), c, [0, 0.72, 0.4]));
+    add(new THREE.BoxGeometry(1.9, 0.46, 0.86), c, [0, 0.36, 0]);
+    add(new THREE.BoxGeometry(1.92, 0.96, 0.18), darken(c, 0.08), [0, 0.76, 0.4]);
+    add(new THREE.BoxGeometry(0.22, 0.62, 0.86), darken(c, 0.08), [-1.06, 0.56, 0]);
+    add(new THREE.BoxGeometry(0.22, 0.62, 0.86), darken(c, 0.08), [1.06, 0.56, 0]);
   } else if (obj.type === "plant") {
-    group.add(mesh(new THREE.CylinderGeometry(0.24, 0.19, 0.34, 20), "#b16d43", [0, 0.18, 0]));
-    group.add(mesh(new THREE.ConeGeometry(0.48, 1.1, 8), c, [0, 0.95, 0]));
+    add(new THREE.CylinderGeometry(0.25, 0.19, 0.36, 20), "#b86d42", [0, 0.18, 0]);
+    add(new THREE.ConeGeometry(0.52, 1.05, 9), c, [0, 0.94, 0]);
+    add(new THREE.SphereGeometry(0.32, 16, 16), lighten(c, 0.18), [0.18, 1.23, 0.08]);
   } else if (obj.type === "rug") {
-    group.add(mesh(new THREE.CylinderGeometry(1.15, 1.15, 0.04, 48), c, [0, 0.04, 0], [Math.PI / 2, 0, 0]));
+    add(new THREE.CylinderGeometry(1.25, 1.25, 0.035, 64), c, [0, 0.04, 0], [0, 0, 0], 0.78);
+    add(new THREE.TorusGeometry(1.04, 0.026, 8, 64), lighten(c, 0.3), [0, 0.07, 0], [Math.PI / 2, 0, 0]);
   } else if (obj.type === "lamp") {
-    group.add(mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.2, 16), "#4c3b45", [0, 0.6, 0]));
-    group.add(mesh(new THREE.ConeGeometry(0.35, 0.45, 24), c, [0, 1.35, 0]));
-    const light = new THREE.PointLight(c, 1.2, 3);
+    add(new THREE.CylinderGeometry(0.055, 0.055, 1.22, 16), "#3e333a", [0, 0.62, 0]);
+    add(new THREE.ConeGeometry(0.38, 0.46, 26), c, [0, 1.36, 0]);
+    const light = new THREE.PointLight(c, 1.6, 3.4);
     light.position.set(0, 1.25, 0);
     group.add(light);
   } else if (obj.type === "shelf") {
-    group.add(mesh(new THREE.BoxGeometry(0.95, 1.7, 0.22), c, [0, 0.85, 0]));
-    [0.38, 0.84, 1.3].forEach((y) => group.add(mesh(new THREE.BoxGeometry(1.06, 0.08, 0.3), "#f4dfb0", [0, y, 0])));
-  } else if (obj.type === "painting") {
-    group.add(mesh(new THREE.BoxGeometry(1.25, 0.82, 0.06), c, [0, 1.65, 0]));
+    add(new THREE.BoxGeometry(0.94, 1.82, 0.22), c, [0, 0.92, 0]);
+    [0.38, 0.86, 1.34].forEach((y) => add(new THREE.BoxGeometry(1.08, 0.075, 0.32), lighten(c, 0.25), [0, y, 0]));
+    add(new THREE.SphereGeometry(0.1, 12, 12), "#f4d36b", [-0.25, 1.05, -0.13]);
+  } else if (["painting", "poster"].includes(obj.type)) {
+    add(new THREE.BoxGeometry(1.18, 0.82, 0.055), c, [0, 1.72, 0]);
+    add(new THREE.BoxGeometry(0.9, 0.56, 0.06), lighten(c, 0.28), [0, 1.72, 0.035]);
+  } else if (obj.type === "window") {
+    add(new THREE.BoxGeometry(1.22, 1.02, 0.06), "#9fd8ff", [0, 1.72, 0], [0, 0, 0], 0.72);
+    add(new THREE.BoxGeometry(1.38, 0.08, 0.09), c, [0, 2.26, 0.02]);
+    add(new THREE.BoxGeometry(1.38, 0.08, 0.09), c, [0, 1.18, 0.02]);
+    add(new THREE.BoxGeometry(0.08, 1.1, 0.09), c, [-0.68, 1.72, 0.02]);
+    add(new THREE.BoxGeometry(0.08, 1.1, 0.09), c, [0.68, 1.72, 0.02]);
+  } else if (obj.type === "curtain") {
+    add(new THREE.BoxGeometry(0.28, 1.34, 0.08), c, [-0.58, 1.62, 0]);
+    add(new THREE.BoxGeometry(0.28, 1.34, 0.08), c, [0.58, 1.62, 0]);
+    add(new THREE.CylinderGeometry(0.035, 0.035, 1.55, 12), "#efe1bd", [0, 2.34, 0], [0, 0, Math.PI / 2]);
   } else if (obj.type === "mirror") {
-    group.add(mesh(new THREE.BoxGeometry(0.82, 1.45, 0.08), "#d6f3ff", [0, 1.15, 0]));
-    group.add(mesh(new THREE.TorusGeometry(0.52, 0.04, 10, 36), c, [0, 1.15, 0], [0, 0, 0]));
+    add(new THREE.BoxGeometry(0.84, 1.42, 0.06), "#ccecff", [0, 1.28, 0], [0, 0, 0], 0.8);
+    add(new THREE.TorusGeometry(0.56, 0.045, 10, 42), c, [0, 1.28, 0.04]);
   } else if (obj.type === "books") {
-    for (let i = 0; i < 5; i += 1) group.add(mesh(new THREE.BoxGeometry(0.16, 0.46 + i * 0.03, 0.34), i % 2 ? c : "#f1b757", [-0.34 + i * 0.17, 0.25, 0]));
+    for (let i = 0; i < 6; i += 1) add(new THREE.BoxGeometry(0.15, 0.42 + i * 0.025, 0.34), i % 2 ? c : "#f0c765", [-0.43 + i * 0.17, 0.24, 0]);
   } else if (obj.type === "catbed") {
-    group.add(mesh(new THREE.TorusGeometry(0.43, 0.14, 12, 32), c, [0, 0.22, 0], [Math.PI / 2, 0, 0]));
-    group.add(mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.1, 32), "#ffe0bb", [0, 0.15, 0]));
+    add(new THREE.TorusGeometry(0.44, 0.14, 12, 36), c, [0, 0.23, 0], [Math.PI / 2, 0, 0]);
+    add(new THREE.CylinderGeometry(0.35, 0.35, 0.1, 36), "#ffe0bd", [0, 0.16, 0]);
+    add(new THREE.SphereGeometry(0.16, 14, 14), "#2b2525", [0.08, 0.32, 0.04]);
   } else if (obj.type === "telescope") {
-    group.add(mesh(new THREE.CylinderGeometry(0.12, 0.12, 1.1, 18), c, [0, 0.9, 0], [0, 0, Math.PI / 2.6]));
-    group.add(mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.1, 12), "#2e2732", [0, 0.45, 0]));
+    add(new THREE.CylinderGeometry(0.13, 0.13, 1.15, 20), c, [0, 0.95, 0], [0, 0, Math.PI / 2.6]);
+    add(new THREE.CylinderGeometry(0.045, 0.045, 1.15, 12), "#2c2831", [0, 0.48, 0]);
+    add(new THREE.CylinderGeometry(0.04, 0.04, 0.95, 12), "#2c2831", [0.28, 0.4, 0.18], [0.45, 0, 0.3]);
+  } else if (obj.type === "wardrobe") {
+    add(new THREE.BoxGeometry(1.0, 1.82, 0.48), c, [0, 0.91, 0]);
+    add(new THREE.BoxGeometry(0.035, 1.58, 0.52), lighten(c, 0.18), [0, 0.94, 0.03]);
+    add(new THREE.SphereGeometry(0.04, 12, 12), "#f4d16a", [-0.12, 0.94, 0.29]);
+    add(new THREE.SphereGeometry(0.04, 12, 12), "#f4d16a", [0.12, 0.94, 0.29]);
+  } else if (obj.type === "table" || obj.type === "console") {
+    const w = obj.type === "console" ? 1.32 : 0.92;
+    add(new THREE.BoxGeometry(w, 0.16, 0.54), c, [0, 0.68, 0]);
+    [-w / 2 + 0.12, w / 2 - 0.12].forEach((x) => [-0.2, 0.2].forEach((z) => add(new THREE.BoxGeometry(0.08, 0.66, 0.08), darken(c, 0.15), [x, 0.34, z])));
+  } else if (obj.type === "divider") {
+    [-0.42, 0, 0.42].forEach((x, i) => add(new THREE.BoxGeometry(0.38, 1.45, 0.08), i % 2 ? lighten(c, 0.1) : c, [x, 0.78, 0]));
+  } else if (obj.type === "candle") {
+    [-0.18, 0.05, 0.24].forEach((x, i) => {
+      add(new THREE.CylinderGeometry(0.08, 0.08, 0.28 + i * 0.08, 16), "#f5e8c8", [x, 0.15 + i * 0.04, 0]);
+      add(new THREE.SphereGeometry(0.07, 12, 12), c, [x, 0.34 + i * 0.08, 0]);
+    });
+  } else if (obj.type === "crystal") {
+    add(new THREE.OctahedronGeometry(0.26), c, [0, 0.35, 0]);
+    add(new THREE.OctahedronGeometry(0.18), lighten(c, 0.28), [0.25, 0.28, 0.12]);
   } else {
-    group.add(mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), c, [0, 0.25, 0]));
-    group.add(mesh(new THREE.SphereGeometry(0.18, 18, 18), "#fff1c7", [0.18, 0.62, -0.12]));
+    add(new THREE.BoxGeometry(0.5, 0.48, 0.5), c, [0, 0.25, 0]);
+    add(new THREE.SphereGeometry(0.17, 16, 16), "#fff1c7", [0.18, 0.6, -0.12]);
   }
 
   group.traverse((child) => {
@@ -424,8 +674,14 @@ function addObject(obj) {
   scene.add(group);
 }
 
-function mesh(geometry, color, position, rotation = [0, 0, 0]) {
-  const material = new THREE.MeshStandardMaterial({ color, roughness: 0.72, metalness: 0.08 });
+function mesh(geometry, color, position, rotation = [0, 0, 0], opacity = 1) {
+  const material = new THREE.MeshStandardMaterial({
+    color,
+    roughness: 0.76,
+    metalness: 0.06,
+    transparent: opacity < 1,
+    opacity,
+  });
   const item = new THREE.Mesh(geometry, material);
   item.position.set(...position);
   item.rotation.set(...rotation);
@@ -435,13 +691,31 @@ function mesh(geometry, color, position, rotation = [0, 0, 0]) {
 function updateOutput(room) {
   els.roomTitle.textContent = room.title;
   els.roomStory.textContent = room.story;
+  els.roomSize.textContent = `${room.dimensions.width.toFixed(1)} x ${room.dimensions.depth.toFixed(1)}`;
+  els.objectCount.textContent = `${room.objects.length} objects`;
   els.selectedName.textContent = "Nothing selected";
-  els.selectedNote.textContent = "Click furniture or decor in the room.";
+  els.selectedNote.textContent = "Click furniture, wall decor, or clutter in the room.";
   els.buildList.innerHTML = "";
   room.buildList.forEach((item) => {
     const li = document.createElement("li");
     li.textContent = item;
     els.buildList.appendChild(li);
+  });
+}
+
+function renderRoomCards(active = "") {
+  els.roomCards.innerHTML = "";
+  roomTemplates.forEach((template) => {
+    const p = palettes[template.key];
+    const button = document.createElement("button");
+    button.className = `room-card ${active.toLowerCase().includes(template.key) ? "active" : ""}`;
+    button.style.setProperty("--swatch", `linear-gradient(135deg, ${p.wall}, ${p.floor} 55%, ${p.accent})`);
+    button.innerHTML = `<span class="room-swatch"></span><strong>${template.label}</strong><span>${template.text}</span>`;
+    button.addEventListener("click", () => {
+      els.prompt.value = template.text;
+      generateRoom(true);
+    });
+    els.roomCards.appendChild(button);
   });
 }
 
@@ -453,13 +727,14 @@ function onPointerDown(event) {
   const hit = raycaster.intersectObjects(clickable, false)[0];
   if (!hit) return;
   const obj = hit.object.userData;
-  els.selectedName.textContent = obj.label;
-  els.selectedNote.textContent = obj.note;
+  els.selectedName.textContent = obj.label || obj.name || "Room Detail";
+  els.selectedNote.textContent = obj.note || obj.description || "A detail that helps the room feel playable.";
 }
 
 function resize() {
   const rect = els.scene.getBoundingClientRect();
-  camera.aspect = rect.width / Math.max(rect.height, 1);
+  if (!rect.width || !rect.height) return;
+  camera.aspect = rect.width / rect.height;
   camera.updateProjectionMatrix();
   renderer.setSize(rect.width, rect.height, false);
 }
@@ -470,9 +745,26 @@ function animate() {
   renderer.render(scene, camera);
 }
 
+function extractJson(content) {
+  const trimmed = content.trim().replace(/^```json/i, "").replace(/^```/, "").replace(/```$/, "").trim();
+  const start = trimmed.indexOf("{");
+  const end = trimmed.lastIndexOf("}");
+  if (start === -1 || end === -1) return trimmed;
+  return trimmed.slice(start, end + 1);
+}
+
+function selectedLabel(select) {
+  return select.options[select.selectedIndex]?.textContent || select.value;
+}
+
 function setStatus(message, type) {
   els.status.textContent = message;
-  els.status.style.background = type === "warn" ? "rgba(241, 183, 87, 0.2)" : type === "work" ? "rgba(155, 77, 202, 0.14)" : "rgba(63, 180, 121, 0.16)";
+  els.status.style.borderColor = type === "warn" ? "rgba(255, 135, 183, 0.35)" : type === "work" ? "rgba(143, 215, 255, 0.32)" : "rgba(215, 255, 95, 0.28)";
+  els.status.style.color = type === "warn" ? "#ffb2cc" : type === "work" ? "#bfe9ff" : "#d7ff5f";
+}
+
+function friendlyError(error) {
+  return String(error.message || error).replace(/Bearer\s+[A-Za-z0-9_.-]+/g, "Bearer [hidden]");
 }
 
 async function copyText(text, message) {
@@ -480,19 +772,24 @@ async function copyText(text, message) {
   setStatus(message, "ok");
 }
 
+function resetConceptImage() {
+  els.conceptImage.className = "concept-empty";
+  els.conceptImage.textContent = "Use an NVIDIA image model to generate a moodboard image for the room.";
+}
+
 function persistKeyChoice() {
   if (els.rememberKey.checked && els.apiKey.value.trim()) {
-    localStorage.setItem("simspark.nvidiaKey", els.apiKey.value.trim());
-    localStorage.setItem("simspark.rememberKey", "true");
+    localStorage.setItem("simrooms.nvidiaKey", els.apiKey.value.trim());
+    localStorage.setItem("simrooms.rememberKey", "true");
   } else {
-    localStorage.removeItem("simspark.nvidiaKey");
-    localStorage.removeItem("simspark.rememberKey");
+    localStorage.removeItem("simrooms.nvidiaKey");
+    localStorage.removeItem("simrooms.rememberKey");
   }
 }
 
 function restoreKey() {
-  if (localStorage.getItem("simspark.rememberKey") === "true") {
-    els.apiKey.value = localStorage.getItem("simspark.nvidiaKey") || "";
+  if (localStorage.getItem("simrooms.rememberKey") === "true") {
+    els.apiKey.value = localStorage.getItem("simrooms.nvidiaKey") || "";
     els.rememberKey.checked = Boolean(els.apiKey.value);
   }
 }
@@ -518,4 +815,21 @@ function seededRandom(seed) {
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+function lighten(color, amount) {
+  return shiftColor(color, Math.abs(amount));
+}
+
+function darken(color, amount) {
+  return shiftColor(color, -Math.abs(amount));
+}
+
+function shiftColor(color, amount) {
+  const hex = validHex(color) ? color.slice(1) : "999999";
+  const num = parseInt(hex, 16);
+  const r = clamp(Math.round(((num >> 16) & 255) + 255 * amount), 0, 255);
+  const g = clamp(Math.round(((num >> 8) & 255) + 255 * amount), 0, 255);
+  const b = clamp(Math.round((num & 255) + 255 * amount), 0, 255);
+  return `#${[r, g, b].map((n) => n.toString(16).padStart(2, "0")).join("")}`;
 }
