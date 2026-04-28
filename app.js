@@ -329,6 +329,7 @@ async function readNvidiaStream(response, onDelta) {
   let buffer = "";
   let content = "";
   let reasoning = "";
+  let streamError = "";
 
   while (true) {
     const { done, value } = await reader.read();
@@ -345,6 +346,15 @@ async function readNvidiaStream(response, onDelta) {
 
       try {
         const item = JSON.parse(payload);
+        if (item.type === "status") {
+          appendProgressLine(item.message || "NVIDIA stream status update.");
+          continue;
+        }
+        if (item.type === "error") {
+          streamError = item.message || "NVIDIA stream failed.";
+          appendProgressLine(`NVIDIA stream error: ${streamError}`);
+          continue;
+        }
         const choice = item.choices?.[0] || {};
         const delta = choice.delta || {};
         const message = choice.message || {};
@@ -358,6 +368,8 @@ async function readNvidiaStream(response, onDelta) {
       }
     }
   }
+
+  if (streamError) throw new Error(streamError);
 
   if (!content.trim()) {
     throw new Error("The streamed response finished without final message content. Try DeepSeek V4 Flash or Pro No Reasoning.");
