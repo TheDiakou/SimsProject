@@ -83,7 +83,8 @@ async function runModelsSequentially(apiKey, bodies, send, writeChunk) {
     const body = bodies[index];
     const label = index === 0 ? "selected model" : "fallback model";
     send({ type: "status", message: `Trying ${label}: ${body.model}` });
-    const ok = await tryStreamModel(apiKey, body, send, writeChunk, index === 0 ? 18000 : 26000);
+    const timeoutMs = body.model?.startsWith("deepseek-ai/deepseek-v4") ? 12000 : index === 0 ? 22000 : 26000;
+    const ok = await tryStreamModel(apiKey, body, send, writeChunk, timeoutMs);
     if (ok) return true;
   }
   return false;

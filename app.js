@@ -4,19 +4,18 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 const $ = (id) => document.getElementById(id);
 
 const chatModels = [
-  { id: "deepseek-v3-1", value: "deepseek-ai/deepseek-v3.1-terminus", label: "DeepSeek V3.1 Terminus (stable)", default: true },
-  { id: "deepseek-v3-2", value: "deepseek-ai/deepseek-v3.2", label: "DeepSeek V3.2 (stable)" },
-  { id: "llama-3-1-8b", value: "meta/llama-3.1-8b-instruct", label: "Llama 3.1 8B (fast fallback)" },
+  { id: "deepseek-v3-2", value: "deepseek-ai/deepseek-v3.2", label: "DeepSeek V3.2 (fast current)", default: true },
+  { id: "qwen3-next-80b", value: "qwen/qwen3-next-80b-a3b-instruct", label: "Qwen3 Next 80B Instruct" },
+  { id: "qwen3-next-80b-thinking", value: "qwen/qwen3-next-80b-a3b-thinking", label: "Qwen3 Next 80B Thinking" },
+  { id: "nemotron-3-super", value: "nvidia/nemotron-3-super-120b-a12b", label: "NVIDIA Nemotron 3 Super 120B" },
+  { id: "nemotron-3-nano", value: "nvidia/nemotron-3-nano-30b-a3b", label: "NVIDIA Nemotron 3 Nano 30B" },
+  { id: "gpt-oss-120b", value: "openai/gpt-oss-120b", label: "GPT OSS 120B" },
+  { id: "mistral-large-3", value: "mistralai/mistral-large-3-675b-instruct-2512", label: "Mistral Large 3 675B" },
   { id: "deepseek-v4-flash-none", value: "deepseek-ai/deepseek-v4-flash", label: "DeepSeek V4 Flash No Reasoning (experimental)", thinking: false },
   { id: "deepseek-v4-flash-high", value: "deepseek-ai/deepseek-v4-flash", label: "DeepSeek V4 Flash High (experimental)", reasoningEffort: "high" },
   { id: "deepseek-v4-pro-high", value: "deepseek-ai/deepseek-v4-pro", label: "DeepSeek V4 Pro High (experimental)", reasoningEffort: "high" },
   { id: "deepseek-v4-pro-max", value: "deepseek-ai/deepseek-v4-pro", label: "DeepSeek V4 Pro Max (experimental)", reasoningEffort: "max" },
   { id: "deepseek-v4-pro-none", value: "deepseek-ai/deepseek-v4-pro", label: "DeepSeek V4 Pro No Reasoning (experimental)", thinking: false },
-  { id: "deepseek-r1", value: "deepseek-ai/deepseek-r1", label: "DeepSeek R1 Reasoning" },
-  { id: "nemotron-ultra", value: "nvidia/llama-3.1-nemotron-ultra-253b-v1", label: "Nemotron Ultra 253B" },
-  { id: "nemotron-70b", value: "nvidia/llama-3.1-nemotron-70b-instruct", label: "Nemotron 70B" },
-  { id: "llama-3-3-70b", value: "meta/llama-3.3-70b-instruct", label: "Llama 3.3 70B" },
-  { id: "mixtral-8x22b", value: "mistralai/mixtral-8x22b-instruct-v0.1", label: "Mixtral 8x22B" },
 ];
 
 const imageModels = [
@@ -321,19 +320,23 @@ function selectedChatModel() {
 }
 
 function fallbackChatBodies(body, selectedModel) {
+  const preferred = [
+    "deepseek-ai/deepseek-v3.2",
+    "qwen/qwen3-next-80b-a3b-instruct",
+    "nvidia/nemotron-3-nano-30b-a3b",
+    "openai/gpt-oss-120b",
+  ];
   const fallbackModels = [];
   if (selectedModel.value.startsWith("deepseek-ai/deepseek-v4")) {
-    fallbackModels.push("deepseek-ai/deepseek-v3.1-terminus", "meta/llama-3.1-8b-instruct");
-  } else if (selectedModel.value !== "deepseek-ai/deepseek-v3.1-terminus") {
-    fallbackModels.push("deepseek-ai/deepseek-v3.1-terminus");
-  }
-  if (!fallbackModels.includes("meta/llama-3.1-8b-instruct") && selectedModel.value !== "meta/llama-3.1-8b-instruct") {
-    fallbackModels.push("meta/llama-3.1-8b-instruct");
+    fallbackModels.push(...preferred);
+  } else {
+    fallbackModels.push(...preferred.filter((model) => model !== selectedModel.value));
   }
 
-  return fallbackModels.map((model) => {
+  return [...new Set(fallbackModels)].slice(0, 3).map((model) => {
     const next = { ...body, model, stream: body.stream };
     delete next.reasoning_effort;
+    delete next.chat_template_kwargs;
     return next;
   });
 }
