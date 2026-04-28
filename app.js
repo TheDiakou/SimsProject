@@ -7,11 +7,11 @@ const chatModels = [
   { id: "deepseek-v3-1", value: "deepseek-ai/deepseek-v3.1-terminus", label: "DeepSeek V3.1 Terminus (stable)", default: true },
   { id: "deepseek-v3-2", value: "deepseek-ai/deepseek-v3.2", label: "DeepSeek V3.2 (stable)" },
   { id: "llama-3-1-8b", value: "meta/llama-3.1-8b-instruct", label: "Llama 3.1 8B (fast fallback)" },
-  { id: "deepseek-v4-flash-none", value: "deepseek-ai/deepseek-v4-flash", label: "DeepSeek V4 Flash No Reasoning (experimental)", reasoningEffort: "none" },
+  { id: "deepseek-v4-flash-none", value: "deepseek-ai/deepseek-v4-flash", label: "DeepSeek V4 Flash No Reasoning (experimental)", thinking: false },
   { id: "deepseek-v4-flash-high", value: "deepseek-ai/deepseek-v4-flash", label: "DeepSeek V4 Flash High (experimental)", reasoningEffort: "high" },
   { id: "deepseek-v4-pro-high", value: "deepseek-ai/deepseek-v4-pro", label: "DeepSeek V4 Pro High (experimental)", reasoningEffort: "high" },
   { id: "deepseek-v4-pro-max", value: "deepseek-ai/deepseek-v4-pro", label: "DeepSeek V4 Pro Max (experimental)", reasoningEffort: "max" },
-  { id: "deepseek-v4-pro-none", value: "deepseek-ai/deepseek-v4-pro", label: "DeepSeek V4 Pro No Reasoning (experimental)", reasoningEffort: "none" },
+  { id: "deepseek-v4-pro-none", value: "deepseek-ai/deepseek-v4-pro", label: "DeepSeek V4 Pro No Reasoning (experimental)", thinking: false },
   { id: "deepseek-r1", value: "deepseek-ai/deepseek-r1", label: "DeepSeek R1 Reasoning" },
   { id: "nemotron-ultra", value: "nvidia/llama-3.1-nemotron-ultra-253b-v1", label: "Nemotron Ultra 253B" },
   { id: "nemotron-70b", value: "nvidia/llama-3.1-nemotron-70b-instruct", label: "Nemotron 70B" },
@@ -216,6 +216,10 @@ async function nvidiaChatRequest(messages, maxTokens, options = {}) {
   const reasoningEffort = options.reasoningEffortOverride ?? model.reasoningEffort;
   if (model.value === "deepseek-ai/deepseek-v4-pro" && reasoningEffort) {
     body.reasoning_effort = reasoningEffort;
+  }
+  if (model.value.startsWith("deepseek-ai/deepseek-v4") && model.thinking === false) {
+    body.chat_template_kwargs = { thinking: false };
+    delete body.reasoning_effort;
   }
 
   if (hasSameOriginProxy()) {

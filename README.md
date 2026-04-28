@@ -16,6 +16,8 @@ Then open `http://localhost:5173`.
 
 The app can call NVIDIA's OpenAI-compatible chat completions endpoint if the user enters their own API key. It also includes image model choices for concept art generation through NVIDIA's model-specific visual endpoints.
 
+The Cloudflare proxy uses JavaScript `fetch()` against the same endpoint shown in NVIDIA's OpenAI SDK examples: `https://integrate.api.nvidia.com/v1/chat/completions`. For DeepSeek V4 no-reasoning options, the request includes `chat_template_kwargs: { "thinking": false }`, equivalent to the Python SDK's `extra_body={"chat_template_kwargs":{"thinking":False}}`.
+
 The key is not stored unless the user enables "Remember locally", and then it is stored only in that browser's `localStorage`.
 
 Do not hardcode API keys in this project.
