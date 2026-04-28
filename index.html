@@ -58,6 +58,14 @@
             <button id="reroll" class="secondary">Reroll Layout</button>
           </div>
           <div id="status" class="status">No API key required. Local generation is instant.</div>
+          <div class="progress-card" aria-live="polite">
+            <div class="progress-head">
+              <span id="progressTitle">Generation stream</span>
+              <strong id="progressTimer">idle</strong>
+            </div>
+            <div class="progress-meter"><span id="progressBar"></span></div>
+            <pre id="progressText">Waiting for the next model call.</pre>
+          </div>
         </section>
       </header>
 

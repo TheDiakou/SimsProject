@@ -9,15 +9,23 @@ export async function onRequest(context) {
       return cors({ error: "A valid NVIDIA API key is required." }, 400);
     }
 
+    const wantsStream = Boolean(body?.stream);
     const upstream = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        Accept: "application/json",
+        Accept: wantsStream ? "text/event-stream" : "application/json",
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify(body),
     });
+
+    if (wantsStream && upstream.ok && upstream.body) {
+      return new Response(upstream.body, {
+        status: upstream.status,
+        headers: responseHeaders("text/event-stream"),
+      });
+    }
 
     const text = await upstream.text();
     return new Response(text, {
@@ -42,5 +50,6 @@ function responseHeaders(contentType) {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
+    "Cache-Control": "no-cache, no-transform",
   };
 }

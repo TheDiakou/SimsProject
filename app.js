@@ -4,12 +4,15 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 const $ = (id) => document.getElementById(id);
 
 const chatModels = [
-  { value: "deepseek-ai/deepseek-v4-pro", label: "DeepSeek V4 Pro" },
-  { value: "deepseek-ai/deepseek-r1", label: "DeepSeek R1 Reasoning" },
-  { value: "nvidia/llama-3.1-nemotron-ultra-253b-v1", label: "Nemotron Ultra 253B" },
-  { value: "nvidia/llama-3.1-nemotron-70b-instruct", label: "Nemotron 70B" },
-  { value: "meta/llama-3.3-70b-instruct", label: "Llama 3.3 70B" },
-  { value: "mistralai/mixtral-8x22b-instruct-v0.1", label: "Mixtral 8x22B" },
+  { id: "deepseek-v4-flash", value: "deepseek-ai/deepseek-v4-flash", label: "DeepSeek V4 Flash (recommended)", default: true },
+  { id: "deepseek-v4-pro-high", value: "deepseek-ai/deepseek-v4-pro", label: "DeepSeek V4 Pro High", reasoningEffort: "high" },
+  { id: "deepseek-v4-pro-max", value: "deepseek-ai/deepseek-v4-pro", label: "DeepSeek V4 Pro Max (slow)", reasoningEffort: "max" },
+  { id: "deepseek-v4-pro-none", value: "deepseek-ai/deepseek-v4-pro", label: "DeepSeek V4 Pro No Reasoning", reasoningEffort: "none" },
+  { id: "deepseek-r1", value: "deepseek-ai/deepseek-r1", label: "DeepSeek R1 Reasoning" },
+  { id: "nemotron-ultra", value: "nvidia/llama-3.1-nemotron-ultra-253b-v1", label: "Nemotron Ultra 253B" },
+  { id: "nemotron-70b", value: "nvidia/llama-3.1-nemotron-70b-instruct", label: "Nemotron 70B" },
+  { id: "llama-3-3-70b", value: "meta/llama-3.3-70b-instruct", label: "Llama 3.3 70B" },
+  { id: "mixtral-8x22b", value: "mistralai/mixtral-8x22b-instruct-v0.1", label: "Mixtral 8x22B" },
 ];
 
 const imageModels = [
@@ -46,6 +49,10 @@ const els = {
   roomCards: $("roomCards"),
   conceptImage: $("conceptImage"),
   clearImage: $("clearImage"),
+  progressTitle: $("progressTitle"),
+  progressTimer: $("progressTimer"),
+  progressBar: $("progressBar"),
+  progressText: $("progressText"),
 };
 
 const ideas = [
@@ -83,6 +90,8 @@ let pointer;
 let clickable = [];
 let currentRoom;
 let seedOffset = 0;
+let progressStartedAt = 0;
+let progressTimerId = 0;
 
 initControls();
 initThree();
@@ -115,7 +124,8 @@ document.querySelectorAll("[data-preset]").forEach((button) => {
 });
 
 function initControls() {
-  chatModels.forEach((model, index) => els.chatModel.add(new Option(model.label, model.value, index === 0, index === 0)));
+  const defaultChatIndex = Math.max(0, chatModels.findIndex((model) => model.default));
+  chatModels.forEach((model, index) => els.chatModel.add(new Option(model.label, model.id, index === defaultChatIndex, index === defaultChatIndex)));
   imageModels.forEach((model, index) => els.imageModel.add(new Option(model.label, model.value, index === 0, index === 0)));
 }
 
@@ -126,15 +136,18 @@ async function generateRoom(allowAi = false) {
 
   if (allowAi && els.apiKey.value.trim()) {
     try {
+      startProgress("Text model stream", `Connecting to ${selectedLabel(els.chatModel)}...`);
       const aiRoom = await generateWithNvidia(prompt);
       currentRoom = normalizeRoom(aiRoom, prompt);
       renderRoom(currentRoom);
       els.generationMode.textContent = "NVIDIA model";
+      finishProgress("Room JSON received and rendered.");
       setStatus(`Generated with ${selectedLabel(els.chatModel)}.`, "ok");
       return;
     } catch (error) {
       console.warn(error);
       aiError = friendlyError(error);
+      failProgress(`NVIDIA text generation failed: ${aiError}`);
     }
   }
 
@@ -155,14 +168,20 @@ async function testNvidiaKey() {
   }
   setStatus(`Testing ${selectedLabel(els.chatModel)}...`, "work");
   try {
+    startProgress("Key test stream", `Sending a tiny test request to ${selectedLabel(els.chatModel)}...`);
     const response = await nvidiaChatRequest([
       { role: "user", content: "Reply with exactly this JSON and nothing else: {\"ok\":true,\"provider\":\"nvidia\"}" }
-    ], 96);
+    ], 96, {
+      reasoningEffortOverride: "none",
+      onDelta: ({ text, reasoning }) => updateStreamProgress(text, reasoning),
+    });
     const content = response.choices?.[0]?.message?.content || "";
     if (!content) throw new Error("The request succeeded but returned no message content.");
+    finishProgress("NVIDIA returned streamed text successfully.");
     setStatus(`NVIDIA key works for ${selectedLabel(els.chatModel)}.`, "ok");
   } catch (error) {
     console.warn(error);
+    failProgress(`NVIDIA key test failed: ${friendlyError(error)}`);
     setStatus(`NVIDIA key test failed. ${friendlyError(error)}`, "warn");
   }
 }
@@ -174,21 +193,26 @@ async function generateWithNvidia(prompt) {
       content: "You are a high-end interactive 3D room director for Sims players. Return only valid JSON. No markdown. Schema: {title:string, roomType:string, dimensions:{width:number,depth:number,height:number}, story:string, palette:{wall:string,floor:string,accent:string,light:string,trim:string}, zones:[{name:string,description:string}], objects:[{type:string,label:string,x:number,z:number,rotation:number,color:string,note:string}], buildList:string[]}. Types: bed,desk,sofa,plant,rug,lamp,shelf,painting,clutter,mirror,books,catbed,telescope,window,curtain,wardrobe,chair,table,divider,poster,candle,console,crystal. Coordinates x and z from -3.2 to 3.2. Include 16 to 26 objects, with at least 4 wall/decor objects. Make it feel like a Rooms.xyz-style miniature world and a Sims build guide. Hex colors only."
     },
     { role: "user", content: prompt }
-  ], 2200);
+  ], 1800, {
+    onDelta: ({ text, reasoning }) => updateStreamProgress(text, reasoning),
+  });
   const content = data.choices?.[0]?.message?.content || "";
   return JSON.parse(extractJson(content));
 }
 
-async function nvidiaChatRequest(messages, maxTokens) {
+async function nvidiaChatRequest(messages, maxTokens, options = {}) {
+  const model = selectedChatModel();
   const body = {
-    model: els.chatModel.value,
+    model: model.value,
     temperature: 0.82,
     top_p: 0.92,
     max_tokens: maxTokens,
     messages,
+    stream: Boolean(options.onDelta),
   };
-  if (els.chatModel.value === "deepseek-ai/deepseek-v4-pro") {
-    body.reasoning_effort = "max";
+  const reasoningEffort = options.reasoningEffortOverride ?? model.reasoningEffort;
+  if (model.value === "deepseek-ai/deepseek-v4-pro" && reasoningEffort) {
+    body.reasoning_effort = reasoningEffort;
   }
 
   if (hasSameOriginProxy()) {
@@ -198,6 +222,7 @@ async function nvidiaChatRequest(messages, maxTokens) {
       body: JSON.stringify({ apiKey: els.apiKey.value.trim(), body }),
     });
     if (!proxied.ok) throw new Error(`${proxied.status} ${(await proxied.text()).slice(0, 260)}`);
+    if (body.stream) return readNvidiaStream(proxied, options.onDelta);
     return proxied.json();
   }
 
@@ -208,7 +233,7 @@ async function nvidiaChatRequest(messages, maxTokens) {
   const response = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
     method: "POST",
     headers: {
-      Accept: "application/json",
+      Accept: body.stream ? "text/event-stream" : "application/json",
       "Content-Type": "application/json",
       Authorization: `Bearer ${els.apiKey.value.trim()}`,
     },
@@ -216,6 +241,7 @@ async function nvidiaChatRequest(messages, maxTokens) {
   });
 
   if (!response.ok) throw new Error(`${response.status} ${(await response.text()).slice(0, 260)}`);
+  if (body.stream) return readNvidiaStream(response, options.onDelta);
   return response.json();
 }
 
@@ -226,6 +252,7 @@ async function generateConceptImage() {
   }
   const room = currentRoom || localRoom(els.prompt.value);
   setStatus(`Generating concept art with ${selectedLabel(els.imageModel)}...`, "work");
+  startProgress("Image model progress", `Preparing prompt for ${selectedLabel(els.imageModel)}...`);
   els.conceptImage.textContent = "Rendering a moodboard image...";
 
   const imagePrompt = [
@@ -237,6 +264,7 @@ async function generateConceptImage() {
 
   try {
     const model = selectedImageModel();
+    advanceProgress(24, "Prompt packaged. Sending image request to NVIDIA...");
     const response = hasSameOriginProxy()
       ? await fetch("/api/nvidia-image", {
         method: "POST",
@@ -258,6 +286,7 @@ async function generateConceptImage() {
     if (!response) throw new Error("This GitHub Pages deployment is static, and NVIDIA image models require the included /api proxy on Cloudflare Pages.");
 
     if (!response.ok) throw new Error(`${response.status} ${(await response.text()).slice(0, 260)}`);
+    advanceProgress(72, "NVIDIA returned an image payload. Decoding response...");
     const data = await response.json();
     const url = imageUrlFromResponse(data);
     if (!url) throw new Error("No image URL returned by the selected model.");
@@ -266,10 +295,12 @@ async function generateConceptImage() {
     img.alt = `${room.title} concept art`;
     img.src = url;
     els.conceptImage.appendChild(img);
+    finishProgress("Concept art decoded and displayed.");
     setStatus(`Concept art generated with ${selectedLabel(els.imageModel)}.`, "ok");
   } catch (error) {
     console.warn(error);
     els.conceptImage.textContent = "Image generation did not return an image. Try another image model from the dropdown.";
+    failProgress(`Image generation failed: ${friendlyError(error)}`);
     setStatus(`Image generation failed. ${friendlyError(error)}`, "warn");
   }
 }
@@ -278,12 +309,61 @@ function selectedImageModel() {
   return imageModels.find((model) => model.value === els.imageModel.value) || imageModels[0];
 }
 
+function selectedChatModel() {
+  return chatModels.find((model) => model.id === els.chatModel.value) || chatModels[0];
+}
+
 function hasSameOriginProxy() {
   return !isStaticGithubPages() && location.protocol.startsWith("http");
 }
 
 function isStaticGithubPages() {
   return location.hostname.endsWith("github.io");
+}
+
+async function readNvidiaStream(response, onDelta) {
+  if (!response.body) return response.json();
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let content = "";
+  let reasoning = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split(/\r?\n/);
+    buffer = lines.pop() || "";
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith("data:")) continue;
+      const payload = trimmed.slice(5).trim();
+      if (!payload || payload === "[DONE]") continue;
+
+      try {
+        const item = JSON.parse(payload);
+        const choice = item.choices?.[0] || {};
+        const delta = choice.delta || {};
+        const message = choice.message || {};
+        const textDelta = delta.content || message.content || "";
+        const reasoningDelta = delta.reasoning_content || delta.reasoning || delta.thinking || message.reasoning_content || "";
+        content += textDelta;
+        reasoning += reasoningDelta;
+        onDelta?.({ text: content, reasoning, textDelta, reasoningDelta });
+      } catch (error) {
+        appendProgressLine(`Unparsed stream event: ${payload.slice(0, 180)}`);
+      }
+    }
+  }
+
+  if (!content.trim()) {
+    throw new Error("The streamed response finished without final message content. Try DeepSeek V4 Flash or Pro No Reasoning.");
+  }
+
+  return { choices: [{ message: { content } }] };
 }
 
 function imageRequestBody(model, prompt) {
@@ -852,6 +932,62 @@ function setStatus(message, type) {
   els.status.textContent = message;
   els.status.style.borderColor = type === "warn" ? "rgba(255, 135, 183, 0.35)" : type === "work" ? "rgba(143, 215, 255, 0.32)" : "rgba(215, 255, 95, 0.28)";
   els.status.style.color = type === "warn" ? "#ffb2cc" : type === "work" ? "#bfe9ff" : "#d7ff5f";
+}
+
+function startProgress(title, message) {
+  clearInterval(progressTimerId);
+  progressStartedAt = Date.now();
+  els.progressTitle.textContent = title;
+  els.progressTimer.textContent = "0s";
+  els.progressBar.style.width = "8%";
+  els.progressText.textContent = message;
+  progressTimerId = setInterval(() => {
+    const elapsed = Math.max(0, Math.round((Date.now() - progressStartedAt) / 1000));
+    els.progressTimer.textContent = `${elapsed}s`;
+    const current = Number.parseFloat(els.progressBar.style.width) || 8;
+    if (current < 88) els.progressBar.style.width = `${Math.min(88, current + 0.55)}%`;
+  }, 1000);
+}
+
+function advanceProgress(percent, message) {
+  els.progressBar.style.width = `${clamp(percent, 0, 100)}%`;
+  appendProgressLine(message);
+}
+
+function finishProgress(message) {
+  clearInterval(progressTimerId);
+  els.progressBar.style.width = "100%";
+  appendProgressLine(message);
+  const elapsed = Math.max(0, Math.round((Date.now() - progressStartedAt) / 1000));
+  els.progressTimer.textContent = `${elapsed}s done`;
+}
+
+function failProgress(message) {
+  clearInterval(progressTimerId);
+  els.progressBar.style.width = "100%";
+  appendProgressLine(message);
+  const elapsed = progressStartedAt ? Math.max(0, Math.round((Date.now() - progressStartedAt) / 1000)) : 0;
+  els.progressTimer.textContent = `${elapsed}s stopped`;
+}
+
+function updateStreamProgress(text, reasoning) {
+  const progress = clamp(18 + Math.floor((text.length + reasoning.length) / 70), 18, 94);
+  els.progressBar.style.width = `${progress}%`;
+  const blocks = [];
+  if (reasoning) blocks.push(`[thinking stream]\n${tail(reasoning, 1600)}`);
+  if (text) blocks.push(`[room JSON stream]\n${tail(text, 2600)}`);
+  els.progressText.textContent = blocks.join("\n\n") || "Connected. Waiting for first tokens from NVIDIA...";
+  els.progressText.scrollTop = els.progressText.scrollHeight;
+}
+
+function appendProgressLine(message) {
+  const prefix = els.progressText.textContent && els.progressText.textContent !== "Waiting for the next model call." ? "\n" : "";
+  els.progressText.textContent = tail(`${els.progressText.textContent}${prefix}${message}`, 5200);
+  els.progressText.scrollTop = els.progressText.scrollHeight;
+}
+
+function tail(value, maxLength) {
+  return value.length > maxLength ? `...${value.slice(-maxLength)}` : value;
 }
 
 function friendlyError(error) {
