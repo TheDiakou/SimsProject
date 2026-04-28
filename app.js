@@ -202,7 +202,7 @@ async function nvidiaChatRequest(messages, maxTokens) {
   }
 
   if (isStaticGithubPages()) {
-    throw new Error("This GitHub Pages deployment is static, and NVIDIA blocks direct browser calls with CORS. Deploy this repo to Vercel or Netlify so the included /api proxy can call NVIDIA.");
+    throw new Error("This GitHub Pages deployment is static, and NVIDIA blocks direct browser calls with CORS. Use the Cloudflare Pages deployment so the included /api proxy can call NVIDIA on the free tier.");
   }
 
   const response = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
@@ -255,7 +255,7 @@ async function generateConceptImage() {
       body: JSON.stringify(imageRequestBody(model, imagePrompt))
     });
 
-    if (!response) throw new Error("This GitHub Pages deployment is static, and NVIDIA image models require the included /api proxy on Vercel or Netlify.");
+    if (!response) throw new Error("This GitHub Pages deployment is static, and NVIDIA image models require the included /api proxy on Cloudflare Pages.");
 
     if (!response.ok) throw new Error(`${response.status} ${(await response.text()).slice(0, 260)}`);
     const data = await response.json();
