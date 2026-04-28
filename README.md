@@ -16,9 +16,9 @@ Then open `http://localhost:5173`.
 
 The app can call NVIDIA's OpenAI-compatible chat completions endpoint if the user enters their own API key. It also includes image model choices for concept art generation through NVIDIA's model-specific visual endpoints.
 
-The Cloudflare proxy uses JavaScript `fetch()` against the same endpoint shown in NVIDIA's OpenAI SDK and Node examples: `https://integrate.api.nvidia.com/v1/chat/completions`. For DeepSeek V4 no-reasoning options, the request includes `chat_template_kwargs: { "thinking": false }`, equivalent to the Python SDK's `extra_body={"chat_template_kwargs":{"thinking":False}}`.
+The Cloudflare proxy uses JavaScript `fetch()` against the same endpoint shown in NVIDIA's OpenAI SDK and Node examples: `https://integrate.api.nvidia.com/v1/chat/completions`.
 
-The text-model picker intentionally focuses on current NVIDIA catalog models that tested successfully, such as DeepSeek V3.2, Qwen3 Next, Nemotron 3, GPT OSS 120B, and Mistral Large 3. DeepSeek V4 options are kept as experimental because direct NVIDIA requests with valid keys produced no response bytes during testing, even outside Cloudflare.
+The text-model picker intentionally only includes GLM 5.1 (`z-ai/glm-5.1`). Direct testing showed GLM 5.1 starts streaming in roughly 15 seconds.
 
 The key is not stored unless the user enables "Remember locally", and then it is stored only in that browser's `localStorage`.
 

@@ -4,18 +4,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 const $ = (id) => document.getElementById(id);
 
 const chatModels = [
-  { id: "deepseek-v3-2", value: "deepseek-ai/deepseek-v3.2", label: "DeepSeek V3.2 (fast current)", default: true },
-  { id: "qwen3-next-80b", value: "qwen/qwen3-next-80b-a3b-instruct", label: "Qwen3 Next 80B Instruct" },
-  { id: "qwen3-next-80b-thinking", value: "qwen/qwen3-next-80b-a3b-thinking", label: "Qwen3 Next 80B Thinking" },
-  { id: "nemotron-3-super", value: "nvidia/nemotron-3-super-120b-a12b", label: "NVIDIA Nemotron 3 Super 120B" },
-  { id: "nemotron-3-nano", value: "nvidia/nemotron-3-nano-30b-a3b", label: "NVIDIA Nemotron 3 Nano 30B" },
-  { id: "gpt-oss-120b", value: "openai/gpt-oss-120b", label: "GPT OSS 120B" },
-  { id: "mistral-large-3", value: "mistralai/mistral-large-3-675b-instruct-2512", label: "Mistral Large 3 675B" },
-  { id: "deepseek-v4-flash-none", value: "deepseek-ai/deepseek-v4-flash", label: "DeepSeek V4 Flash No Reasoning (experimental)", thinking: false },
-  { id: "deepseek-v4-flash-high", value: "deepseek-ai/deepseek-v4-flash", label: "DeepSeek V4 Flash High (experimental)", reasoningEffort: "high" },
-  { id: "deepseek-v4-pro-high", value: "deepseek-ai/deepseek-v4-pro", label: "DeepSeek V4 Pro High (experimental)", reasoningEffort: "high" },
-  { id: "deepseek-v4-pro-max", value: "deepseek-ai/deepseek-v4-pro", label: "DeepSeek V4 Pro Max (experimental)", reasoningEffort: "max" },
-  { id: "deepseek-v4-pro-none", value: "deepseek-ai/deepseek-v4-pro", label: "DeepSeek V4 Pro No Reasoning (experimental)", thinking: false },
+  { id: "glm-5-1", value: "z-ai/glm-5.1", label: "GLM 5.1", default: true },
 ];
 
 const imageModels = [
@@ -212,15 +201,6 @@ async function nvidiaChatRequest(messages, maxTokens, options = {}) {
     messages,
     stream: Boolean(options.onDelta),
   };
-  const reasoningEffort = options.reasoningEffortOverride ?? model.reasoningEffort;
-  if (model.value === "deepseek-ai/deepseek-v4-pro" && reasoningEffort) {
-    body.reasoning_effort = reasoningEffort;
-  }
-  if (model.value.startsWith("deepseek-ai/deepseek-v4") && model.thinking === false) {
-    body.chat_template_kwargs = { thinking: false };
-    delete body.reasoning_effort;
-  }
-
   if (hasSameOriginProxy()) {
     const proxied = await fetch("/api/nvidia-chat", {
       method: "POST",
@@ -320,25 +300,7 @@ function selectedChatModel() {
 }
 
 function fallbackChatBodies(body, selectedModel) {
-  const preferred = [
-    "deepseek-ai/deepseek-v3.2",
-    "qwen/qwen3-next-80b-a3b-instruct",
-    "nvidia/nemotron-3-nano-30b-a3b",
-    "openai/gpt-oss-120b",
-  ];
-  const fallbackModels = [];
-  if (selectedModel.value.startsWith("deepseek-ai/deepseek-v4")) {
-    fallbackModels.push(...preferred);
-  } else {
-    fallbackModels.push(...preferred.filter((model) => model !== selectedModel.value));
-  }
-
-  return [...new Set(fallbackModels)].slice(0, 3).map((model) => {
-    const next = { ...body, model, stream: body.stream };
-    delete next.reasoning_effort;
-    delete next.chat_template_kwargs;
-    return next;
-  });
+  return [];
 }
 
 function hasSameOriginProxy() {
@@ -400,7 +362,7 @@ async function readNvidiaStream(response, onDelta) {
   if (streamError) throw new Error(streamError);
 
   if (!content.trim()) {
-    throw new Error("The streamed response finished without final message content. Try DeepSeek V4 Flash or Pro No Reasoning.");
+    throw new Error("The streamed response finished without final message content. Try GLM 5.1 again.");
   }
 
   return { choices: [{ message: { content } }] };
