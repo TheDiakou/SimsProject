@@ -127,6 +127,10 @@ async function generateRoom(allowAi = false) {
   let aiError = null;
 
   if (allowAi && els.apiKey.value.trim()) {
+    currentRoom = localRoom(prompt);
+    renderRoom(currentRoom);
+    els.generationMode.textContent = "Local draft";
+    setStatus("Rendered an instant local draft while GLM 5.1 generates the final room.", "work");
     try {
       startProgress("Text model stream", `Connecting to ${selectedLabel(els.chatModel)}...`);
       const aiRoom = await generateWithNvidia(prompt);
@@ -182,10 +186,10 @@ async function generateWithNvidia(prompt) {
   const data = await nvidiaChatRequest([
     {
       role: "system",
-      content: "Design a Sims-inspired 3D room. Return only compact valid JSON, no markdown. Schema: {title:string, roomType:string, dimensions:{width:number,depth:number,height:number}, story:string, palette:{wall:string,floor:string,accent:string,light:string,trim:string}, zones:[{name:string,description:string}], objects:[{type:string,label:string,x:number,z:number,rotation:number,color:string,note:string}], buildList:string[]}. Object types: bed,desk,sofa,plant,rug,lamp,shelf,painting,clutter,mirror,books,catbed,telescope,window,curtain,wardrobe,chair,table,divider,poster,candle,console,crystal. Coordinates x and z must be -3.2 to 3.2. Include 10 to 14 objects. Use hex colors only."
+      content: "Design a Sims-inspired 3D room. Return only compact valid JSON, no markdown. Keep all strings short. Schema: {title:string, roomType:string, dimensions:{width:number,depth:number,height:number}, story:string, palette:{wall:string,floor:string,accent:string,light:string,trim:string}, zones:[{name:string,description:string}], objects:[{type:string,label:string,x:number,z:number,rotation:number,color:string,note:string}], buildList:string[]}. Object types: bed,desk,sofa,plant,rug,lamp,shelf,painting,clutter,mirror,books,catbed,telescope,window,curtain,wardrobe,chair,table,divider,poster,candle,console,crystal. Coordinates x and z must be -3.2 to 3.2. Include 8 to 12 objects. Use hex colors only."
     },
     { role: "user", content: prompt }
-  ], 1200, {
+  ], 900, {
     onDelta: ({ text, reasoning }) => updateStreamProgress(text, reasoning),
   });
   const content = data.choices?.[0]?.message?.content || "";
