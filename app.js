@@ -4,10 +4,14 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 const $ = (id) => document.getElementById(id);
 
 const chatModels = [
-  { id: "deepseek-v4-flash", value: "deepseek-ai/deepseek-v4-flash", label: "DeepSeek V4 Flash (recommended)", default: true },
-  { id: "deepseek-v4-pro-high", value: "deepseek-ai/deepseek-v4-pro", label: "DeepSeek V4 Pro High", reasoningEffort: "high" },
-  { id: "deepseek-v4-pro-max", value: "deepseek-ai/deepseek-v4-pro", label: "DeepSeek V4 Pro Max (slow)", reasoningEffort: "max" },
-  { id: "deepseek-v4-pro-none", value: "deepseek-ai/deepseek-v4-pro", label: "DeepSeek V4 Pro No Reasoning", reasoningEffort: "none" },
+  { id: "deepseek-v3-1", value: "deepseek-ai/deepseek-v3.1-terminus", label: "DeepSeek V3.1 Terminus (stable)", default: true },
+  { id: "deepseek-v3-2", value: "deepseek-ai/deepseek-v3.2", label: "DeepSeek V3.2 (stable)" },
+  { id: "llama-3-1-8b", value: "meta/llama-3.1-8b-instruct", label: "Llama 3.1 8B (fast fallback)" },
+  { id: "deepseek-v4-flash-none", value: "deepseek-ai/deepseek-v4-flash", label: "DeepSeek V4 Flash No Reasoning (experimental)", reasoningEffort: "none" },
+  { id: "deepseek-v4-flash-high", value: "deepseek-ai/deepseek-v4-flash", label: "DeepSeek V4 Flash High (experimental)", reasoningEffort: "high" },
+  { id: "deepseek-v4-pro-high", value: "deepseek-ai/deepseek-v4-pro", label: "DeepSeek V4 Pro High (experimental)", reasoningEffort: "high" },
+  { id: "deepseek-v4-pro-max", value: "deepseek-ai/deepseek-v4-pro", label: "DeepSeek V4 Pro Max (experimental)", reasoningEffort: "max" },
+  { id: "deepseek-v4-pro-none", value: "deepseek-ai/deepseek-v4-pro", label: "DeepSeek V4 Pro No Reasoning (experimental)", reasoningEffort: "none" },
   { id: "deepseek-r1", value: "deepseek-ai/deepseek-r1", label: "DeepSeek R1 Reasoning" },
   { id: "nemotron-ultra", value: "nvidia/llama-3.1-nemotron-ultra-253b-v1", label: "Nemotron Ultra 253B" },
   { id: "nemotron-70b", value: "nvidia/llama-3.1-nemotron-70b-instruct", label: "Nemotron 70B" },
@@ -204,8 +208,7 @@ async function nvidiaChatRequest(messages, maxTokens, options = {}) {
   const model = selectedChatModel();
   const body = {
     model: model.value,
-    temperature: 0.82,
-    top_p: 0.92,
+    temperature: 0.72,
     max_tokens: maxTokens,
     messages,
     stream: Boolean(options.onDelta),
@@ -219,7 +222,7 @@ async function nvidiaChatRequest(messages, maxTokens, options = {}) {
     const proxied = await fetch("/api/nvidia-chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ apiKey: els.apiKey.value.trim(), body }),
+      body: JSON.stringify({ apiKey: els.apiKey.value.trim(), body, fallbacks: fallbackChatBodies(body, model) }),
     });
     if (!proxied.ok) throw new Error(`${proxied.status} ${(await proxied.text()).slice(0, 260)}`);
     if (body.stream) return readNvidiaStream(proxied, options.onDelta);
@@ -311,6 +314,24 @@ function selectedImageModel() {
 
 function selectedChatModel() {
   return chatModels.find((model) => model.id === els.chatModel.value) || chatModels[0];
+}
+
+function fallbackChatBodies(body, selectedModel) {
+  const fallbackModels = [];
+  if (selectedModel.value.startsWith("deepseek-ai/deepseek-v4")) {
+    fallbackModels.push("deepseek-ai/deepseek-v3.1-terminus", "meta/llama-3.1-8b-instruct");
+  } else if (selectedModel.value !== "deepseek-ai/deepseek-v3.1-terminus") {
+    fallbackModels.push("deepseek-ai/deepseek-v3.1-terminus");
+  }
+  if (!fallbackModels.includes("meta/llama-3.1-8b-instruct") && selectedModel.value !== "meta/llama-3.1-8b-instruct") {
+    fallbackModels.push("meta/llama-3.1-8b-instruct");
+  }
+
+  return fallbackModels.map((model) => {
+    const next = { ...body, model, stream: body.stream };
+    delete next.reasoning_effort;
+    return next;
+  });
 }
 
 function hasSameOriginProxy() {
