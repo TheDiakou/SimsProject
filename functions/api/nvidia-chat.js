@@ -84,18 +84,18 @@ async function runModelsSequentially(apiKey, bodies, send, writeChunk) {
     const label = index === 0 ? "selected model" : "fallback model";
     send({ type: "status", message: `Trying ${label}: ${body.model}` });
     const timeoutMs = firstByteTimeoutFor(body.model, index);
-    const ok = await tryStreamModel(apiKey, body, send, writeChunk, timeoutMs);
+    const ok = await tryStreamModel(apiKey, body, send, writeChunk, timeoutMs, index < bodies.length - 1);
     if (ok) return true;
   }
   return false;
 }
 
 function firstByteTimeoutFor(model, index) {
-  if (model === "z-ai/glm-5.1") return 35000;
+  if (model === "z-ai/glm-5.1") return 180000;
   return index === 0 ? 30000 : 45000;
 }
 
-async function tryStreamModel(apiKey, body, send, writeChunk, firstByteTimeoutMs) {
+async function tryStreamModel(apiKey, body, send, writeChunk, firstByteTimeoutMs, hasFallback) {
   const aborter = new AbortController();
   const firstByteTimer = setTimeout(() => aborter.abort("first-byte-timeout"), firstByteTimeoutMs);
 
@@ -124,7 +124,7 @@ async function tryStreamModel(apiKey, body, send, writeChunk, firstByteTimeoutMs
       return false;
     }
 
-    send({ type: "status", message: `${body.model} accepted the request. Waiting for first token...` });
+    send({ type: "status", message: `${body.model} accepted the request. GLM 5.1 can take 30-120s before the first room-design token...` });
     const reader = upstream.body.getReader();
     let sawChunk = false;
     while (true) {
@@ -142,7 +142,10 @@ async function tryStreamModel(apiKey, body, send, writeChunk, firstByteTimeoutMs
   } catch (error) {
     clearTimeout(firstByteTimer);
     const timedOut = error?.name === "AbortError" || String(error).includes("first-byte-timeout");
-    send({ type: "status", message: timedOut ? `${body.model} produced no bytes within ${Math.round(firstByteTimeoutMs / 1000)}s; trying fallback.` : `${body.model} failed: ${error.message || error}` });
+    const timeoutMessage = hasFallback
+      ? `${body.model} produced no bytes within ${Math.round(firstByteTimeoutMs / 1000)}s; trying fallback.`
+      : `${body.model} produced no bytes within ${Math.round(firstByteTimeoutMs / 1000)}s; stopping this request.`;
+    send({ type: "status", message: timedOut ? timeoutMessage : `${body.model} failed: ${error.message || error}` });
     return false;
   }
 }

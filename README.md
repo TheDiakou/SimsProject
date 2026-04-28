@@ -18,7 +18,7 @@ The app can call NVIDIA's OpenAI-compatible chat completions endpoint if the use
 
 The Cloudflare proxy uses JavaScript `fetch()` against the same endpoint shown in NVIDIA's OpenAI SDK and Node examples: `https://integrate.api.nvidia.com/v1/chat/completions`.
 
-The text-model picker intentionally only includes GLM 5.1 (`z-ai/glm-5.1`). Direct testing showed GLM 5.1 starts streaming in roughly 15 seconds.
+The text-model picker intentionally only includes GLM 5.1 (`z-ai/glm-5.1`). Direct testing showed tiny GLM 5.1 prompts can start streaming in roughly 15 seconds, while larger structured room JSON prompts may take 30-120 seconds before the first token.
 
 The key is not stored unless the user enables "Remember locally", and then it is stored only in that browser's `localStorage`.
 

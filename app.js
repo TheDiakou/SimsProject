@@ -182,10 +182,10 @@ async function generateWithNvidia(prompt) {
   const data = await nvidiaChatRequest([
     {
       role: "system",
-      content: "You are a high-end interactive 3D room director for Sims players. Return only valid JSON. No markdown. Schema: {title:string, roomType:string, dimensions:{width:number,depth:number,height:number}, story:string, palette:{wall:string,floor:string,accent:string,light:string,trim:string}, zones:[{name:string,description:string}], objects:[{type:string,label:string,x:number,z:number,rotation:number,color:string,note:string}], buildList:string[]}. Types: bed,desk,sofa,plant,rug,lamp,shelf,painting,clutter,mirror,books,catbed,telescope,window,curtain,wardrobe,chair,table,divider,poster,candle,console,crystal. Coordinates x and z from -3.2 to 3.2. Include 16 to 26 objects, with at least 4 wall/decor objects. Make it feel like a Rooms.xyz-style miniature world and a Sims build guide. Hex colors only."
+      content: "Design a Sims-inspired 3D room. Return only compact valid JSON, no markdown. Schema: {title:string, roomType:string, dimensions:{width:number,depth:number,height:number}, story:string, palette:{wall:string,floor:string,accent:string,light:string,trim:string}, zones:[{name:string,description:string}], objects:[{type:string,label:string,x:number,z:number,rotation:number,color:string,note:string}], buildList:string[]}. Object types: bed,desk,sofa,plant,rug,lamp,shelf,painting,clutter,mirror,books,catbed,telescope,window,curtain,wardrobe,chair,table,divider,poster,candle,console,crystal. Coordinates x and z must be -3.2 to 3.2. Include 10 to 14 objects. Use hex colors only."
     },
     { role: "user", content: prompt }
-  ], 1800, {
+  ], 1200, {
     onDelta: ({ text, reasoning }) => updateStreamProgress(text, reasoning),
   });
   const content = data.choices?.[0]?.message?.content || "";
